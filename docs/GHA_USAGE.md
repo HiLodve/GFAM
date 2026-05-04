@@ -97,3 +97,9 @@ GFAM_SIGN_KEY
 然后进入 `Actions -> GFAM Manual Run -> Run workflow` 手动选择模块、服务器、运行时长和是否启用妖精自动。
 
 更多说明见：`docs/GHA_WORKFLOW.md`。
+
+## 日志输出建议
+
+GitHub Actions 页面不适合长期显示本地版那种固定下方仪表盘。手动 workflow 默认启用 `compact_log`，会隐藏仪表盘刷新和大部分逐步移动日志，只保留正常运行、错误、停止和结束统计相关信息。
+
+排查路线或接口问题时，可以在 Run workflow 页面将 `compact_log` 改为 `false`，临时恢复完整日志。

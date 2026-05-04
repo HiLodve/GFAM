@@ -62,6 +62,11 @@ on:
         required: false
         type: string
         default: ""
+      compact_log:
+        description: "GHA 精简日志：隐藏固定仪表盘和高频移动步骤"
+        required: true
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -116,6 +121,8 @@ jobs:
           GFAM_FAIRY_AUTO_ENABLED: ${{ inputs.fairy && '1' || '0' }}
           GFAM_DEBUG: "0"
           GFAM_SAVE_DEBUG_JSON: "0"
+          GFAM_GHA_COMPACT_LOG: ${{ inputs.compact_log && '1' || '0' }}
+          GFAM_GHA_RESET_LOG_EVERY: "10"
         run: |
           python gha_manual_runner.py \
             --module "${{ inputs.module }}" \
@@ -125,4 +132,5 @@ jobs:
             --run-minutes "${{ inputs.run_minutes }}" \
             --startup-commands "${{ inputs.startup_commands }}" \
             --start-commands "${{ inputs.start_commands }}" \
-            --stop-commands "${{ inputs.stop_commands }}"
+            --stop-commands "${{ inputs.stop_commands }}" \
+            --compact-log "${{ inputs.compact_log && 'on' || 'off' }}"

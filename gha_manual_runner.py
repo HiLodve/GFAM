@@ -5,14 +5,19 @@
 This helper is intentionally thin: it does not implement any game logic.
 It starts the normal GHA launcher, sends menu commands through stdin, waits
 for a bounded duration, then asks the module to stop safely.
+
+For GitHub Actions, compact logging is enabled by default to avoid flooding
+the Actions web log with fixed dashboard refresh blocks. The full module
+output can be restored by setting GFAM_GHA_COMPACT_LOG=0 in the workflow.
 """
 from __future__ import annotations
 
 import argparse
 import os
-import signal
+import re
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 from typing import Iterable, List
@@ -32,6 +37,58 @@ DEFAULT_START_COMMANDS = {
 }
 
 DEFAULT_STOP_COMMANDS = ["-q", "-E"]
+
+# Fixed dashboard headers. In local Windows runs these are useful; in GHA they
+# generate very long logs because every refresh becomes permanent text.
+DASHBOARD_HEADER_RE = re.compile(r"^=+\s*.*运行状态.*=+\s*$")
+DASHBOARD_FOOTER_RE = re.compile(r"^=+\s*$")
+
+# Repetitive step-level lines that are useful locally but too noisy in Actions.
+NOISY_LINE_PATTERNS = [
+    re.compile(r"^\s*\[>\]\s*Step\s+\d+[:：]"),
+    re.compile(r"^\s*\[>\]\s*移动\s+\d+\s*->\s*\d+"),
+    re.compile(r"^\s*\[!\]\s*触发战斗"),
+    re.compile(r"^\s*\[!\]\s*执行\s*BuildingSkill", re.IGNORECASE),
+    re.compile(r"^\s*\[>\]\s*触发友方移动"),
+]
+
+# Lines that should always survive compact filtering.
+IMPORTANT_KEYWORDS = (
+    "[GHA]",
+    "Started",
+    "启动",
+    "开始",
+    "发现",
+    "完成",
+    "结束",
+    "统计",
+    "成功",
+    "失败",
+    "错误",
+    "异常",
+    "中断",
+    "停止",
+    "退出",
+    "abort",
+    "Abort",
+    "error",
+    "Error",
+    "Index/index 已完成",
+    "当前灰域积分",
+    "票券缓存",
+    "四项缓存",
+)
+
+
+def is_truthy(value: str | None, default: bool = False) -> bool:
+    if value is None:
+        return default
+    text = str(value).strip().lower()
+    if text in {"1", "true", "yes", "y", "on"}:
+        return True
+    if text in {"0", "false", "no", "n", "off"}:
+        return False
+    return default
 
 
 def parse_lines(text: str | None) -> List[str]:
@@ -58,6 +115,89 @@ def send_commands(proc: subprocess.Popen, commands: Iterable[str], delay: float 
         except BrokenPipeError:
             return
         time.sleep(delay)
+
+
+class OutputFilter:
+    """Stream child output while suppressing dashboard refresh blocks."""
+
+    def __init__(self, compact: bool = True, reset_log_every: int = 10) -> None:
+        self.compact = compact
+        self.reset_log_every = max(1, int(reset_log_every or 10))
+        self._in_dashboard = False
+        self._suppressed_dashboard_blocks = 0
+        self._reset_attempts_seen = 0
+        self._reset_suppressed = 0
+
+    def _should_keep_reset_line(self, line: str) -> bool:
+        if "重置灰域地图" not in line or "尝试" not in line:
+            return True
+        self._reset_attempts_seen += 1
+        # Keep the first few attempts and then every Nth attempt, so the log
+        # still proves the job is alive without printing every retry.
+        if self._reset_attempts_seen <= 3 or self._reset_attempts_seen % self.reset_log_every == 0:
+            if self._reset_suppressed:
+                print(f"[GHA] 已省略 {self._reset_suppressed} 条灰域重置重试日志。", flush=True)
+                self._reset_suppressed = 0
+            return True
+        self._reset_suppressed += 1
+        return False
+
+    def filter_line(self, raw_line: str) -> str | None:
+        if not self.compact:
+            return raw_line.rstrip("\n")
+
+        line = raw_line.rstrip("\n")
+        stripped = line.strip()
+
+        if self._in_dashboard:
+            if DASHBOARD_FOOTER_RE.match(stripped):
+                self._in_dashboard = False
+                self._suppressed_dashboard_blocks += 1
+                if self._suppressed_dashboard_blocks in {1, 5, 20} or self._suppressed_dashboard_blocks % 100 == 0:
+                    return f"[GHA] 已省略固定仪表盘刷新 {self._suppressed_dashboard_blocks} 次。"
+            return None
+
+        if DASHBOARD_HEADER_RE.match(stripped):
+            self._in_dashboard = True
+            return None
+
+        if not stripped:
+            return None
+
+        if not self._should_keep_reset_line(stripped):
+            return None
+
+        if any(keyword in stripped for keyword in IMPORTANT_KEYWORDS):
+            return line
+
+        if any(pattern.search(stripped) for pattern in NOISY_LINE_PATTERNS):
+            return None
+
+        # Keep general non-dashboard logs. Most modules already print useful
+        # macro/summary lines outside the fixed dashboard.
+        return line
+
+    def drain(self) -> None:
+        if self.compact and self._reset_suppressed:
+            print(f"[GHA] 已省略 {self._reset_suppressed} 条灰域重置重试日志。", flush=True)
+            self._reset_suppressed = 0
+
+
+def stream_output(proc: subprocess.Popen, output_filter: OutputFilter) -> threading.Thread:
+    def _worker() -> None:
+        if not proc.stdout:
+            return
+        try:
+            for raw in proc.stdout:
+                text = output_filter.filter_line(raw)
+                if text is not None:
+                    print(text, flush=True)
+        finally:
+            output_filter.drain()
+
+    thread = threading.Thread(target=_worker, daemon=True)
+    thread.start()
+    return thread
 
 
 def wait_until(proc: subprocess.Popen, seconds: int) -> bool:
@@ -99,6 +239,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--startup-commands", default="", help="Commands sent before the default start command, separated by newlines")
     parser.add_argument("--start-commands", default="", help="Commands used to start the module. If empty, defaults are used for known modules")
     parser.add_argument("--stop-commands", default="", help="Commands sent at the end. If empty: -q then -E")
+    parser.add_argument("--compact-log", choices=["default", "on", "off"], default="default", help="Suppress fixed dashboards and noisy step logs in GitHub Actions")
     args = parser.parse_args(argv)
 
     if not RUN_GHA.exists():
@@ -125,16 +266,28 @@ def main(argv: list[str] | None = None) -> int:
     if args.no_fairy:
         cmd.append("--no-fairy")
 
+    compact = is_truthy(os.environ.get("GFAM_GHA_COMPACT_LOG"), default=True)
+    if args.compact_log == "on":
+        compact = True
+    elif args.compact_log == "off":
+        compact = False
+    reset_log_every = int(os.environ.get("GFAM_GHA_RESET_LOG_EVERY", "10") or "10")
+
     print("[GHA] 启动 GFAM 模块。", flush=True)
     print(f"[GHA] module={args.module} server={args.server} fairy={'on' if env.get('GFAM_FAIRY_AUTO_ENABLED') == '1' else 'off'}", flush=True)
+    print(f"[GHA] compact_log={'on' if compact else 'off'}", flush=True)
     proc = subprocess.Popen(
         cmd,
         cwd=str(ROOT),
         env=env,
         stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
         text=True,
         bufsize=1,
     )
+    output_filter = OutputFilter(compact=compact, reset_log_every=reset_log_every)
+    output_thread = stream_output(proc, output_filter)
 
     try:
         # Give the child process time to print menus and start reading input.
@@ -157,19 +310,23 @@ def main(argv: list[str] | None = None) -> int:
         run_seconds = max(1, int(args.run_minutes) * 60)
         print(f"[GHA] 运行窗口：{args.run_minutes} 分钟。", flush=True)
         if wait_until(proc, run_seconds):
+            output_thread.join(timeout=5)
             return proc.returncode or 0
 
         stop_commands = parse_lines(args.stop_commands) or DEFAULT_STOP_COMMANDS
         print("[GHA] 到达运行窗口，发送安全停止命令。", flush=True)
         send_commands(proc, stop_commands, delay=2.0)
         if wait_until(proc, 180):
+            output_thread.join(timeout=5)
             return proc.returncode or 0
         terminate_process(proc)
+        output_thread.join(timeout=5)
         return proc.returncode if proc.returncode is not None else 124
     except KeyboardInterrupt:
         print("[GHA] 收到中断，发送安全停止。", flush=True)
         send_commands(proc, DEFAULT_STOP_COMMANDS, delay=1.0)
         terminate_process(proc)
+        output_thread.join(timeout=5)
         return 130
 
 

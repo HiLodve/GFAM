@@ -58,3 +58,14 @@ Workflow 会通过 `gha_manual_runner.py` 向模块标准输入发送命令。
 - 运行中不会抓 UID/SIGN，也不会启动 Windows 代理。
 - 若 SIGN 失效，需要重新获取 SIGN 并更新仓库 Secret。
 - 单个 job 默认最长 360 分钟，建议先用 10～30 分钟短测。
+
+## GHA 精简日志
+
+`compact_log` 默认开启。开启后，`gha_manual_runner.py` 会在 GitHub Actions 端过滤固定状态仪表盘刷新和高频移动步骤日志，仅保留：
+
+- GHA 启动、运行窗口、安全停止信息
+- 模块开始、发现彩蛋、开始任务、完成任务、错误、停止、统计等关键日志
+- 运行结束后的模块统计
+- 灰域地图重置尝试日志会保留前几次，并按间隔摘要显示，避免 Actions 日志过长
+
+如需排查详细步骤，可在手动运行 workflow 时关闭 `compact_log`。
