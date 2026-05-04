@@ -7,8 +7,9 @@ It starts the normal GHA launcher, sends menu commands through stdin, waits
 for a bounded duration, then asks the module to stop safely.
 
 For GitHub Actions, compact logging is enabled by default to avoid flooding
-the Actions web log with fixed dashboard refresh blocks. The full module
-output can be restored by setting GFAM_GHA_COMPACT_LOG=0 in the workflow.
+the Actions web log with fixed dashboard refresh blocks and high-frequency
+macro/micro/step logs from every module. The full module output can be
+restored by setting GFAM_GHA_COMPACT_LOG=0 in the workflow.
 """
 from __future__ import annotations
 
@@ -45,11 +46,29 @@ DASHBOARD_FOOTER_RE = re.compile(r"^=+\s*$")
 
 # Repetitive step-level lines that are useful locally but too noisy in Actions.
 NOISY_LINE_PATTERNS = [
+    # Greyzone reset / movement details
+    re.compile(r"^\s*\[-\]\s*当前地图未发现有效彩蛋，继续重置。"),
     re.compile(r"^\s*\[>\]\s*Step\s+\d+[:：]"),
     re.compile(r"^\s*\[>\]\s*移动\s+\d+\s*->\s*\d+"),
     re.compile(r"^\s*\[!\]\s*触发战斗"),
     re.compile(r"^\s*\[!\]\s*执行\s*BuildingSkill", re.IGNORECASE),
     re.compile(r"^\s*\[>\]\s*触发友方移动"),
+
+    # EPA / 13-4 / smart / f2p routine macro-micro noise
+    re.compile(r"^\s*=+\s*MACRO\s+\d+", re.IGNORECASE),
+    re.compile(r"^\s*=+\s*MICRO\s+\d+", re.IGNORECASE),
+    re.compile(r"^\s*\[MACRO\s+\d+\]", re.IGNORECASE),
+    re.compile(r"^\s*\[MICRO\s+\d+\]", re.IGNORECASE),
+    re.compile(r"^\s*\[\*\]\s*Micro Run", re.IGNORECASE),
+    re.compile(r"^\s*当前\s*MACRO[:：]"),
+    re.compile(r"^\s*当前\s*MICRO[:：]"),
+    re.compile(r"^\s*当前\s*Step[:：]"),
+    re.compile(r"^\s*最近一轮经验[:：]"),
+    re.compile(r"^\s*本梯队已运行[:：]"),
+    re.compile(r"^\s*预计完成[:：]"),
+    re.compile(r"^\s*总运行时间[:：]"),
+    re.compile(r"^\s*停止[:：]"),
+    re.compile(r"^\s*[-=]{8,}\s*$"),
 ]
 
 # Lines that should always survive compact filtering.
@@ -77,6 +96,17 @@ IMPORTANT_KEYWORDS = (
     "当前灰域积分",
     "票券缓存",
     "四项缓存",
+    "掉落",
+    "拆解",
+    "应急",
+    "仓库不足",
+    "满级",
+    "切换",
+    "目标",
+    "达成",
+    "领取",
+    "建造",
+    "强化",
 )
 
 
@@ -127,20 +157,54 @@ class OutputFilter:
         self._suppressed_dashboard_blocks = 0
         self._reset_attempts_seen = 0
         self._reset_suppressed = 0
+        self._last_reset_heartbeat = 0.0
+        self._suppressed_general = 0
+        self._last_general_heartbeat = 0.0
+        self._in_stats_block = False
+        self._stats_lines_seen = 0
 
     def _should_keep_reset_line(self, line: str) -> bool:
         if "重置灰域地图" not in line or "尝试" not in line:
             return True
         self._reset_attempts_seen += 1
-        # Keep the first few attempts and then every Nth attempt, so the log
-        # still proves the job is alive without printing every retry.
-        if self._reset_attempts_seen <= 3 or self._reset_attempts_seen % self.reset_log_every == 0:
-            if self._reset_suppressed:
-                print(f"[GHA] 已省略 {self._reset_suppressed} 条灰域重置重试日志。", flush=True)
-                self._reset_suppressed = 0
-            return True
         self._reset_suppressed += 1
+
+        # In compact mode, do not print every reset attempt. GitHub Actions
+        # logs are permanent text, so repeated "no candy found" lines quickly
+        # bury the useful information. Keep only a low-frequency heartbeat.
+        now = time.time()
+        if self._last_reset_heartbeat <= 0 or now - self._last_reset_heartbeat >= 60:
+            self._last_reset_heartbeat = now
+            skipped = self._reset_suppressed
+            self._reset_suppressed = 0
+            print(f"[GHA] 灰域重置中：已尝试 {self._reset_attempts_seen} 次，最近省略 {skipped} 条重置日志。", flush=True)
         return False
+
+    def _maybe_general_heartbeat(self) -> str | None:
+        self._suppressed_general += 1
+        now = time.time()
+        if self._last_general_heartbeat <= 0 or now - self._last_general_heartbeat >= 60:
+            skipped = self._suppressed_general
+            self._suppressed_general = 0
+            self._last_general_heartbeat = now
+            return f"[GHA] 运行中：已省略 {skipped} 条常规模块日志。"
+        return None
+
+    def _is_stats_header(self, stripped: str) -> bool:
+        return "统计" in stripped and (stripped.startswith("=") or stripped.startswith("-"))
+
+    def _filter_stats_block(self, line: str, stripped: str) -> str | None:
+        if self._is_stats_header(stripped):
+            self._in_stats_block = True
+            self._stats_lines_seen = 1
+            return line
+        if self._in_stats_block:
+            self._stats_lines_seen += 1
+            if self._stats_lines_seen > 1 and DASHBOARD_FOOTER_RE.match(stripped):
+                self._in_stats_block = False
+                self._stats_lines_seen = 0
+            return line
+        return None
 
     def filter_line(self, raw_line: str) -> str | None:
         if not self.compact:
@@ -164,23 +228,34 @@ class OutputFilter:
         if not stripped:
             return None
 
+        stats_line = self._filter_stats_block(line, stripped)
+        if stats_line is not None:
+            return stats_line
+
+        # Greyzone repeated reset messages are especially noisy and contain
+        # words such as "发现" that would otherwise look important, so filter
+        # them before keyword matching.
         if not self._should_keep_reset_line(stripped):
+            return None
+
+        if any(pattern.search(stripped) for pattern in NOISY_LINE_PATTERNS):
             return None
 
         if any(keyword in stripped for keyword in IMPORTANT_KEYWORDS):
             return line
 
-        if any(pattern.search(stripped) for pattern in NOISY_LINE_PATTERNS):
-            return None
-
-        # Keep general non-dashboard logs. Most modules already print useful
-        # macro/summary lines outside the fixed dashboard.
-        return line
+        # In compact mode, suppress ordinary progress chatter from all modules
+        # (EPA/13-4/smart/f2p/pick/greyzone) and emit a low-frequency heartbeat
+        # so the Actions log still proves the process is alive.
+        return self._maybe_general_heartbeat()
 
     def drain(self) -> None:
         if self.compact and self._reset_suppressed:
-            print(f"[GHA] 已省略 {self._reset_suppressed} 条灰域重置重试日志。", flush=True)
+            print(f"[GHA] 灰域重置日志结束：最后省略 {self._reset_suppressed} 条重置日志。", flush=True)
             self._reset_suppressed = 0
+        if self.compact and self._suppressed_general:
+            print(f"[GHA] 常规模块日志结束：最后省略 {self._suppressed_general} 条。", flush=True)
+            self._suppressed_general = 0
 
 
 def stream_output(proc: subprocess.Popen, output_filter: OutputFilter) -> threading.Thread:

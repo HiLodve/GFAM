@@ -63,7 +63,7 @@ on:
         type: string
         default: ""
       compact_log:
-        description: "GHA 精简日志：隐藏固定仪表盘和高频移动步骤"
+        description: "GHA 精简日志：隐藏固定仪表盘、Macro/Micro 与高频移动步骤"
         required: true
         type: boolean
         default: true
@@ -122,7 +122,7 @@ jobs:
           GFAM_DEBUG: "0"
           GFAM_SAVE_DEBUG_JSON: "0"
           GFAM_GHA_COMPACT_LOG: ${{ inputs.compact_log && '1' || '0' }}
-          GFAM_GHA_RESET_LOG_EVERY: "10"
+          GFAM_GHA_RESET_LOG_EVERY: "60"
         run: |
           python gha_manual_runner.py \
             --module "${{ inputs.module }}" \
