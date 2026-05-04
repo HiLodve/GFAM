@@ -1,0 +1,128 @@
+name: GFAM Manual Run
+
+on:
+  workflow_dispatch:
+    inputs:
+      module:
+        description: "要运行的模块"
+        required: true
+        type: choice
+        default: greyzone
+        options:
+          - greyzone
+          - 13-4
+          - f2p
+          - f2p_pr
+          - smart
+          - pick
+          - epa
+      server:
+        description: "服务器"
+        required: true
+        type: choice
+        default: SOP
+        options:
+          - SOP
+          - RO635
+          - M4A1
+          - M16
+          - AR-15
+          - EN
+      fairy:
+        description: "是否启用妖精自动建造 / 自动强化"
+        required: true
+        type: boolean
+        default: false
+      ticket_type:
+        description: "灰域票券类型；非灰域模块保持 default 即可"
+        required: true
+        type: choice
+        default: ticket2
+        options:
+          - default
+          - ticket1
+          - ticket2
+      run_minutes:
+        description: "运行多少分钟后发送 -q / -E 安全停止"
+        required: true
+        type: string
+        default: "30"
+      startup_commands:
+        description: "启动前额外命令，可留空；多条命令用 \n 分隔"
+        required: false
+        type: string
+        default: ""
+      start_commands:
+        description: "自定义启动命令，可留空；留空时对 greyzone/f2p/13-4/smart 默认发送 -r"
+        required: false
+        type: string
+        default: ""
+      stop_commands:
+        description: "自定义停止命令，可留空；默认发送 -q 和 -E"
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gfam-${{ github.repository }}-${{ inputs.server }}
+  cancel-in-progress: false
+
+jobs:
+  run-gfam:
+    name: Run GFAM ${{ inputs.module }} on ${{ inputs.server }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Prepare runtime
+        shell: bash
+        run: |
+          chmod +x run_gha.sh gha_manual_runner.py
+          if [ -f requirements-gha.txt ]; then
+            python -m pip install --upgrade pip
+            pip install -r requirements-gha.txt
+          fi
+
+      - name: Check required secrets
+        shell: bash
+        env:
+          GFAM_USER_UID: ${{ secrets.GFAM_USER_UID }}
+          GFAM_SIGN_KEY: ${{ secrets.GFAM_SIGN_KEY }}
+        run: |
+          if [ -z "$GFAM_USER_UID" ] || [ -z "$GFAM_SIGN_KEY" ]; then
+            echo "缺少仓库 Secrets：GFAM_USER_UID / GFAM_SIGN_KEY" >&2
+            echo "请到 Settings -> Secrets and variables -> Actions 中添加。" >&2
+            exit 1
+          fi
+
+      - name: Run GFAM module
+        shell: bash
+        env:
+          GFAM_USER_UID: ${{ secrets.GFAM_USER_UID }}
+          GFAM_SIGN_KEY: ${{ secrets.GFAM_SIGN_KEY }}
+          GFAM_SERVER: ${{ inputs.server }}
+          GFAM_SELECTED_SERVER: ${{ inputs.server }}
+          GFAM_FAIRY_AUTO_ENABLED: ${{ inputs.fairy && '1' || '0' }}
+          GFAM_DEBUG: "0"
+          GFAM_SAVE_DEBUG_JSON: "0"
+        run: |
+          python gha_manual_runner.py \
+            --module "${{ inputs.module }}" \
+            --server "${{ inputs.server }}" \
+            ${{ inputs.fairy && '--fairy' || '--no-fairy' }} \
+            --ticket-type "${{ inputs.ticket_type }}" \
+            --run-minutes "${{ inputs.run_minutes }}" \
+            --startup-commands "${{ inputs.startup_commands }}" \
+            --start-commands "${{ inputs.start_commands }}" \
+            --stop-commands "${{ inputs.stop_commands }}"
