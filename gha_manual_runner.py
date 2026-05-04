@@ -162,6 +162,42 @@ class OutputFilter:
         self._last_general_heartbeat = 0.0
         self._in_stats_block = False
         self._stats_lines_seen = 0
+        self._recent_lines: dict[str, float] = {}
+        self._duplicate_suppressed = 0
+        self._last_duplicate_heartbeat = 0.0
+
+    def _should_emit_deduped(self, stripped: str) -> bool:
+        """Suppress identical key lines that are reprinted by dashboard refreshes.
+
+        Many GFAM modules keep a recent-log buffer above the fixed dashboard.
+        In a local terminal a screen refresh replaces the old view, but in
+        GitHub Actions every refresh is appended forever. Even after hiding the
+        dashboard block, the recent-log buffer may replay the same important
+        lines such as "彩蛋任务完成" or "自动拆解成功" multiple times. Keep the
+        first occurrence and suppress exact duplicates for a short window.
+        """
+        if not stripped or stripped.startswith("[GHA]"):
+            return True
+
+        now = time.time()
+        window = 180.0
+        last = self._recent_lines.get(stripped)
+        self._recent_lines[stripped] = now
+
+        # Prevent unbounded growth during very long runs.
+        if len(self._recent_lines) > 1200:
+            cutoff = now - window
+            self._recent_lines = {k: v for k, v in self._recent_lines.items() if v >= cutoff}
+
+        if last is not None and now - last < window:
+            self._duplicate_suppressed += 1
+            if self._last_duplicate_heartbeat <= 0 or now - self._last_duplicate_heartbeat >= 60:
+                skipped = self._duplicate_suppressed
+                self._duplicate_suppressed = 0
+                self._last_duplicate_heartbeat = now
+                print(f"[GHA] 已省略 {skipped} 条重复关键日志。", flush=True)
+            return False
+        return True
 
     def _should_keep_reset_line(self, line: str) -> bool:
         if "重置灰域地图" not in line or "尝试" not in line:
@@ -242,7 +278,7 @@ class OutputFilter:
             return None
 
         if any(keyword in stripped for keyword in IMPORTANT_KEYWORDS):
-            return line
+            return line if self._should_emit_deduped(stripped) else None
 
         # In compact mode, suppress ordinary progress chatter from all modules
         # (EPA/13-4/smart/f2p/pick/greyzone) and emit a low-frequency heartbeat
@@ -256,6 +292,9 @@ class OutputFilter:
         if self.compact and self._suppressed_general:
             print(f"[GHA] 常规模块日志结束：最后省略 {self._suppressed_general} 条。", flush=True)
             self._suppressed_general = 0
+        if self.compact and self._duplicate_suppressed:
+            print(f"[GHA] 重复关键日志结束：最后省略 {self._duplicate_suppressed} 条。", flush=True)
+            self._duplicate_suppressed = 0
 
 
 def stream_output(proc: subprocess.Popen, output_filter: OutputFilter) -> threading.Thread:
