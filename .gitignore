@@ -1,0 +1,42 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Node/cache
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# GFAM runtime caches and debug outputs
+cache/*.json
+cache/*.tmp
+cache/*.log
+!cache/.gitkeep
+index_debug.json
+*debug*.json
+*_Index_index_*.json
+000*_*.json
+*.log
+
+# Account/session/secrets
+.env
+.env.*
+gfam_auth_*.json
+session*.json
+*_session.json
+*_auth.json
+
+# Local archives and backups
+*.zip
+*.7z
+*.rar
+*.bak
+*.bak_*
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

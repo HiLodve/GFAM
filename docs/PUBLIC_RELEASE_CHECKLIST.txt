@@ -1,0 +1,16 @@
+GFAM v1.0 公开发布检查清单
+==========================
+
+当前公开发布包已处理：
+- 不包含 run_windows_debug.bat / run_windows_no_close_debug.bat。
+- 不包含 cache/*.json、Index/index 原始包、运行日志、__pycache__、.pyc。
+- 包含 .gitignore，默认忽略运行缓存、调试包、账号会话文件和压缩包。
+- 包含 README.md，便于 GitHub / Gitee 直接展示。
+- 包含 examples/config.example.json，示例配置仅使用无效占位内容。
+- 包含 GFAM 根目录 LICENSE。
+- 包含 libs/ZIRC/LICENSE，并在 THIRD_PARTY_LICENSES.txt 中说明第三方组件来源。
+
+提交仓库前仍建议手动检查：
+- git status 中不要出现 cache/*.json 或抓包文件。
+- 不要提交真实 UID、SIGN、USER_DEVICE、open_id、user_id。
+- 不要提交本地生成的压缩包、日志、调试 JSON、会话文件。

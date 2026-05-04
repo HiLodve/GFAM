@@ -1,0 +1,13 @@
+第三方组件说明
+================
+
+本项目内置或适配以下第三方组件：
+
+1. ZIRC / gflzirc
+   来源项目：MaaGF1/ZIRC
+   仓库地址：https://github.com/MaaGF1/ZIRC
+   许可证：MIT License
+   在本包中的路径：libs/ZIRC/
+   原始许可证文件：libs/ZIRC/LICENSE
+
+ZIRC / gflzirc 的版权与许可声明归原作者所有。根据 MIT License 要求，随本项目分发时保留其版权声明和许可证文本。

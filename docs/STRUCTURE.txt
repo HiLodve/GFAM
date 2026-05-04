@@ -1,0 +1,33 @@
+GFAM 文件结构说明
+
+GFAM/
+  main.js                         GFAM 主菜单入口。
+  run_windows.bat                 Windows 普通启动脚本。
+  run_windows_debug.bat           Windows 调试启动脚本。
+  setup_windows.ps1               环境检查脚本。
+  data/                           静态数据目录。
+    gun.json / gun1.json          枪械目录缓存，供打捞/训练等模块读取。
+  cache/                          运行期缓存目录。
+    greyzone_halloween_cache.json 灰域运行前 Index 基准与本地推算缓存，运行后生成。
+  docs/                           文档目录。
+    CHANGELOG.txt                 版本更新摘要。
+    STRUCTURE.txt                 本文件。
+    reference/                    参考映射资料。
+  modules/                        GFAM 功能模块。
+    epa_plus.py                   EPA 打捞。
+    gfam_smart_epa.py             第6项 smart 一键打捞。
+    gfam_13_4.py                  13-4 练级/资源打捞。
+    f2p.py / f2p_pr.py            零元购模块。
+    pick_and_train.py             获取训练资料 / 自动训练。
+    gfam_greyzone_halloween.py    第7项灰域自动彩蛋运行入口。
+    gfam_greyzone_data.py         灰域静态路线、出生点邻接配置。
+    gfam_fairy_auto.py            妖精自动建造/强化后台循环。
+    gfam_fairy_stats.py           妖精自动状态缓存与仪表盘摘要。
+    gfam_common.py                通用路径与调试辅助。
+  libs/ZIRC/src/core/gflzirc/      项目内置 gflzirc，避免依赖系统旧版本。
+
+维护原则
+1. 已跑通的核心战斗流程不做大范围重写。
+2. 能通过本地缓存、安全本地计数或服务器动作返回值推导的状态，不主动重复请求 Index/index。
+3. 运行结束只拆本次运行记录到的遗留掉落，不全仓库扫描。
+4. 用户隐私/账号相关默认配置使用占位值。
