@@ -72,14 +72,18 @@ CONFIG = {
     "MAX_CONSECUTIVE_FAILURES": 8,
 }
 
-# A-10 方案不移动、不进战斗，流程很短；默认间隔可以比 EPA 战斗模块更低。
+# A-10 方案不移动、不进战斗，流程很短；默认尝试约 2 次结算/秒。
+# 说明：这是“尽量靠近 2 RPS”的节流目标；实际速度仍受服务器响应、网络、加解密与拆解请求影响。
 # 如需回退保守速度，可在本地/GHA 环境变量中覆盖：
-#   GFAM_A10_STEP_DELAY=0.15
-#   GFAM_A10_ROUND_DELAY=1.0
-#   GFAM_A10_FAILURE_DELAY=2.0
-A10_STEP_DELAY = max(0.0, float(os.environ.get("GFAM_A10_STEP_DELAY", "0.05") or 0.05))
-A10_ROUND_DELAY = max(0.0, float(os.environ.get("GFAM_A10_ROUND_DELAY", "0.20") or 0.20))
-A10_FAILURE_DELAY = max(0.0, float(os.environ.get("GFAM_A10_FAILURE_DELAY", "0.50") or 0.50))
+#   GFAM_A10_TARGET_RPS=1
+#   GFAM_A10_STEP_DELAY=0.05
+#   GFAM_A10_ROUND_DELAY=0.20
+#   GFAM_A10_FAILURE_DELAY=0.50
+A10_TARGET_RPS = max(0.0, float(os.environ.get("GFAM_A10_TARGET_RPS", "2.0") or 2.0))
+A10_MIN_ROUND_SECONDS = (1.0 / A10_TARGET_RPS) if A10_TARGET_RPS > 0 else 0.0
+A10_STEP_DELAY = max(0.0, float(os.environ.get("GFAM_A10_STEP_DELAY", "0.01") or 0.01))
+A10_ROUND_DELAY = max(0.0, float(os.environ.get("GFAM_A10_ROUND_DELAY", "0.00") or 0.0))
+A10_FAILURE_DELAY = max(0.0, float(os.environ.get("GFAM_A10_FAILURE_DELAY", "0.30") or 0.30))
 
 current_worker_thread = None
 worker_mode = None
@@ -320,6 +324,21 @@ def abort_current_mission(client: GFLClient, source: str = "abort") -> None:
         print("[!] abortMission 失败：%s" % exc)
 
 
+def throttle_a10_round(round_started_at: float) -> None:
+    """按目标 RPS 轻量节流，默认约 2 次结算/秒。
+
+    如果服务器请求本身已经超过目标周期，则不额外等待；
+    如果请求过快，则补足到 A10_MIN_ROUND_SECONDS。
+    A10_ROUND_DELAY 作为额外保守等待，默认 0。
+    """
+    elapsed = max(0.0, time.time() - float(round_started_at or time.time()))
+    target_wait = max(0.0, A10_MIN_ROUND_SECONDS - elapsed)
+    extra_wait = max(0.0, A10_ROUND_DELAY)
+    wait_time = max(target_wait, extra_wait)
+    if wait_time > 0:
+        time.sleep(wait_time)
+
+
 def run_one_a10_resource(client: GFLClient) -> Optional[dict]:
     """Run one A-10 no-move resource attempt.
 
@@ -442,7 +461,7 @@ def a10_resource_worker() -> None:
 
     print("=== A-10 四项资源获取 Started ===")
     print("[*] 本方案只部署第一梯队；第一梯队必须为单人梯队；不移动、不 battleFinish，直接结束回合并结算。")
-    print("[*] A-10 快速间隔：步骤 %.2fs / 轮间 %.2fs / 失败 %.2fs。" % (A10_STEP_DELAY, A10_ROUND_DELAY, A10_FAILURE_DELAY))
+    print("[*] A-10 快速间隔：目标 %.2f 轮/秒（最小轮期 %.2fs），步骤 %.2fs / 额外轮间 %.2fs / 失败 %.2fs。" % (A10_TARGET_RPS, A10_MIN_ROUND_SECONDS, A10_STEP_DELAY, A10_ROUND_DELAY, A10_FAILURE_DELAY))
     abort_current_mission(client, "正式运行前状态清理")
     index_payload = request_index(client, "运行前 Index/index")
     if index_payload is None:
@@ -472,6 +491,7 @@ def a10_resource_worker() -> None:
         RUN_STATS["macro"] = int(RUN_STATS.get("macro", 0) or 0) + 1
         macro = RUN_STATS["macro"]
         print("=== A-10 RESOURCE MACRO %d / 直到手动停止 ===" % macro)
+        round_started_at = time.time()
         result = run_one_a10_resource(client)
         if result is None:
             consecutive_failures += 1
@@ -510,8 +530,7 @@ def a10_resource_worker() -> None:
                 pending_guns[:] = []
                 RUN_STATS["pending_gun_count"] = 0
         print("[A-10] 第 %d 轮完成；本轮掉落：%s；待批量拆解 %d" % (macro, RUN_STATS["last_drop"], len(pending_guns)))
-        if A10_ROUND_DELAY:
-            time.sleep(A10_ROUND_DELAY)
+        throttle_a10_round(round_started_at)
 
     if pending_guns:
         retired = retire_guns(client, pending_guns, reason="A-10 运行结束收尾批量拆解")
@@ -540,7 +559,7 @@ def print_menu() -> None:
     print("----------------------------------------------------------")
     print("说明：运行前会请求一次 Index/index 校验第一梯队是否为单人，并记录四项起始库存。")
     print("说明：运行中不移动、不 battleFinish；结束时再次请求 Index/index 统计四项变化。")
-    print("说明：默认快速间隔 步骤 %.2fs / 轮间 %.2fs，可用 GFAM_A10_STEP_DELAY 等环境变量覆盖。" % (A10_STEP_DELAY, A10_ROUND_DELAY))
+    print("说明：默认尝试 %.2f 轮/秒；步骤 %.2fs / 额外轮间 %.2fs，可用 GFAM_A10_TARGET_RPS 等环境变量覆盖。" % (A10_TARGET_RPS, A10_STEP_DELAY, A10_ROUND_DELAY))
     print("==========================================================\n")
 
 
