@@ -118,7 +118,8 @@ CONFIG = {
     "TRAIN_TEAM_COUNT": 1,
     "TRAIN_SCHEDULE_MODE": "full",   # full=当前梯队练到全满再切下一个, equal=均等练级轮转
     "CURRENT_TRAIN_TEAM_INDEX": 0,
-    "STOP_ON_MAX_LEVEL": True,
+    "STOP_ON_MAX_LEVEL": False,
+    # 默认与菜单中的“回车默认 -keepmax”保持一致；-go 一键运行也默认不因满级停机。
     # single 打捞模式：当当前目标人形至少各掉落 1 个后自动停止。
     "STOP_AFTER_EACH_TARGET_DROPPED": False,
     "AUTO_MONITOR_MODE": False,
@@ -1263,6 +1264,9 @@ def smart_epa_prepare_from_index(index_data):
     CONFIG["SINGLE_GUN_MODE"] = True
     CONFIG["SINGLE_GUN_INDEX"] = 0
     CONFIG["ENABLE_FILTER_PROTECTION"] = True
+    # 第6项 smart 计划的默认运行选项应与菜单提示一致：满级时继续运行，目标达成后也继续运行。
+    # 用户仍可在后续菜单中手动选择 -stopmax / -stopdrop 覆盖该默认值。
+    CONFIG["STOP_ON_MAX_LEVEL"] = False
     CONFIG["STOP_AFTER_EACH_TARGET_DROPPED"] = False
     if equip_plan:
         CONFIG["AUTO_LOCK_TARGET_EQUIP"] = True
@@ -5884,6 +5888,11 @@ if __name__ == '__main__':
                             MENU_STATE["awaiting_target_drop_stop"] = False
                             MENU_STATE["awaiting_equip_auto_lock"] = False
                             MENU_STATE["awaiting_run_confirm"] = False
+                            # -go 是“使用当前/默认选项直接开始”。默认值必须与菜单提示保持一致：
+                            # 满级停机默认 -keepmax（关闭），目标达成停机默认 -keepdrop（关闭）。
+                            # 避免 GHA / 本地快捷运行时因为 CONFIG 初始值或旧状态而误触发满级停机。
+                            CONFIG["STOP_ON_MAX_LEVEL"] = False
+                            CONFIG["STOP_AFTER_EACH_TARGET_DROPPED"] = False
                             if CONFIG.get("MODE_NAME") == "team":
                                 CONFIG["ENABLE_FILTER_PROTECTION"] = CONFIG.get("ENABLE_FILTER_PROTECTION", True)
                             if CONFIG.get("SELECTED_DIFFICULTY") == "夜战":
