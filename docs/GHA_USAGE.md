@@ -50,6 +50,7 @@ GHA 入口会显示模块菜单。模块启动后仍由该模块接管命令行�
 ```bash
 ./run_gha.sh --module greyzone --server SOP
 ./run_gha.sh --module 13-4 --server M4A1
+./run_gha.sh --module pick --server SOP --fairy
 ./run_gha.sh --module f2p --server SOP --fairy
 ```
 
@@ -98,32 +99,21 @@ GFAM_SIGN_KEY
 
 更多说明见：`docs/GHA_WORKFLOW.md`。
 
+## 模块选择建议
+
+- `greyzone`：灰域自动彩蛋，保持原有 GHA 默认逻辑。
+- `13-4-train`：13-4 练级模式，`train_team_count` 表示从梯队2开始练几个实际练级梯队。
+- `13-4-resource`：13-4 双单人五战四项资源打捞模式。
+- `pick_and_train`：统一训练循环。先自动训练，训练资料不足时切换获取资料，达到模块内条件后返回训练。
+- `smart`：一键打捞入口。GHA 不再提供独立 `epa` 入口，EPA 相关流程建议由 smart 替代。
+- `f2p` / `f2p_pr`：零元购相关模块。
+
+默认情况下，13-4 与 pick_and_train 不需要填写 `start_commands`，runner 会自动补全启动命令。
+
 ## 日志输出建议
 
 GitHub Actions 页面不适合长期显示本地版那种固定下方仪表盘。手动 workflow 默认启用 `compact_log`，会隐藏仪表盘刷新和大部分逐步移动日志，只保留正常运行、错误、停止和结束统计相关信息。
 
+开启 `compact_log` 时，GHA 会隐藏妖精自动固定状态行与重复计数行，例如 `妖精自动：操作 建造启动 0/0，领取 0/1，强化 0/0；状态 ...`。实际建造、领取、强化的成功/失败、错误、停止和运行结束统计仍会保留。
+
 排查路线或接口问题时，可以在 Run workflow 页面将 `compact_log` 改为 `false`，临时恢复完整日志。
-
-
-## 精简日志说明
-
-开启 `compact_log` 时，GHA 日志会隐藏固定仪表盘、逐步移动日志、`当前地图未发现有效彩蛋，继续重置。`、Macro/Micro 常规循环记录等重复行。日志中仅保留关键事件、错误/停止信息、低频运行心跳和最终统计。
-
-
-## 13-4 手动运行参数
-
-- `module=13-4-train`：练级模式。`train_team_count` 表示从梯队2开始练几个实际练级梯队。
-- `module=13-4-resource`：四项资源打捞模式，固定使用梯队2主跑、梯队1占位，两队都应为单人编队。
-
-默认情况下不需要填写 `start_commands`：Runner 会自动完成 13-4 模式选择、Index/index 解析、满级停机默认配置、确认运行和 `-r` 启动。
-
-灰域模块不受本次 13-4 拆分影响。
-
-
-## pick 手动运行参数
-
-- `module=pick-data`：进入获取训练资料菜单并运行，默认命令为 `-1`、`-r`。
-- `module=pick-train`：进入自动训练菜单，先 `-count` 获取仓库统计，再 `-run` 开始自动训练。
-- `module=pick`：兼容旧用法，等同于 `pick-data`。
-
-如果需要在训练前切换 `-cycle`、`-target`、`-locked` 等设置，可写入 `startup_commands` 或自定义 `start_commands`。

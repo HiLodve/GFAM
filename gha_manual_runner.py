@@ -31,12 +31,6 @@ DEFAULT_START_COMMANDS = {
     "f2p": ["-r"],
     "f2p_pr": ["-r"],
     "smart": ["-r"],
-    # pick-data is the safe default: enter the 获取训练资料 menu and start.
-    # pick-train is handled by build_default_start_commands because it needs
-    # a -count -> confirm -run sequence.
-    "pick": ["-1", "-r"],
-    "pick-data": ["-1", "-r"],
-    "epa": [],
 }
 
 GHA_MODULE_TO_GFAM_MODULE = {
@@ -46,9 +40,12 @@ GHA_MODULE_TO_GFAM_MODULE = {
     "134-resource": "13-4",
     "13-4": "13-4",
     "134": "13-4",
+    "pick-and-train": "pick",
     "pick-data": "pick",
     "pick-train": "pick",
     "pick": "pick",
+    # EPA 的参数链太长，GHA 中用 smart 一键打捞入口替代；保留 epa 作为兼容别名。
+    "epa": "smart",
 }
 
 DEFAULT_STOP_COMMANDS = ["-q", "-E"]
@@ -82,6 +79,18 @@ NOISY_LINE_PATTERNS = [
     re.compile(r"^\s*预计完成[:：]"),
     re.compile(r"^\s*总运行时间[:：]"),
     re.compile(r"^\s*停止[:：]"),
+
+    # Fairy auto routine dashboard/status refreshes. Keep real action/error
+    # lines via IMPORTANT_KEYWORDS, but suppress repeated counters such as
+    # "妖精自动：操作 建造启动 0/0，领取 0/1，强化 0/0；状态 ..."
+    re.compile(r"^\s*妖精自动[:：]\s*操作\s*"),
+    re.compile(r"^\s*妖精自动[:：].*状态\s*仓库"),
+    re.compile(r"^\s*妖精自动[:：].*栏位"),
+    re.compile(r"^\s*妖精自动[:：].*本地倒计时"),
+    re.compile(r"^\s*妖精进度[:：]"),
+    re.compile(r"^\s*当前妖精仓库[:：]"),
+    re.compile(r"^\s*当前妖精.*倒计时"),
+
     re.compile(r"^\s*[-=]{8,}\s*$"),
 ]
 
@@ -171,14 +180,17 @@ def normalize_gha_module(value: str | None) -> str:
         "res134": "13-4-resource",
         "13-4": "13-4-train",
         "134": "13-4-train",
-        "pick-resource": "pick-data",
-        "pick-coin": "pick-data",
-        "pick-data": "pick-data",
-        "pick": "pick-data",
-        "picktrain": "pick-train",
-        "pick-train": "pick-train",
-        "train": "pick-train",
-        "auto-train": "pick-train",
+        "pick-and-train": "pick-and-train",
+        "pickandtrain": "pick-and-train",
+        "pick-data": "pick-and-train",
+        "pick-train": "pick-and-train",
+        "pick-resource": "pick-and-train",
+        "pick-coin": "pick-and-train",
+        "pick": "pick-and-train",
+        "train": "pick-and-train",
+        "auto-train": "pick-and-train",
+        "epa": "smart",
+        "epa-plus": "smart",
     }
     return aliases.get(text, text)
 
@@ -195,9 +207,10 @@ def build_default_start_commands(module_key: str, train_team_count: int) -> List
     if module_key == "13-4-resource":
         # 13-4 四项资源模式：选择资源模式 -> 请求一次 Index/index -> 默认不满级停机 -> 确认 -> 开跑。
         return ["-134", "-a", "-keepmax", "-y", "-r"]
-    if module_key == "pick-train":
-        # 自动训练模式：进入训练菜单 -> 拉一次 Index/index 统计可训练对象 -> 确认开始训练。
-        # -run 会进入确认子菜单后被读取；stdin 会保留排队命令。
+    if module_key == "pick-and-train":
+        # 自动训练/获取资料循环：先进入自动训练并 -count，再 -run。
+        # pick_and_train 模块内部默认开启 TRAIN_PICK_CYCLE_ENABLED：
+        # 训练材料不足 -> 自动切换获取训练资料；中级资料达到本模式上限/coin2+0 -> 回到训练。
         return ["-2", "-count", "-run"]
     return list(DEFAULT_START_COMMANDS.get(module_key, []))
 
@@ -405,7 +418,7 @@ def terminate_process(proc: subprocess.Popen) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run GFAM module from GitHub Actions with scripted commands.")
-    parser.add_argument("--module", default=os.environ.get("GFAM_GHA_MODULE", "greyzone"), help="GFAM module id, e.g. greyzone / f2p / 13-4-train / 13-4-resource / pick-data / pick-train")
+    parser.add_argument("--module", default=os.environ.get("GFAM_GHA_MODULE", "greyzone"), help="GFAM module id, e.g. greyzone / f2p / 13-4-train / 13-4-resource / pick_and_train / smart")
     parser.add_argument("--server", default=os.environ.get("GFAM_SERVER", "SOP"), help="Server: SOP/RO635/M4A1/M16/AR-15/EN")
     parser.add_argument("--fairy", action="store_true", help="Enable fairy automation for this run")
     parser.add_argument("--no-fairy", action="store_true", help="Disable fairy automation for this run")
@@ -457,10 +470,8 @@ def main(argv: list[str] | None = None) -> int:
     print(f"[GHA] module={module_key} child_module={child_module} server={args.server} fairy={'on' if env.get('GFAM_FAIRY_AUTO_ENABLED') == '1' else 'off'}", flush=True)
     if module_key == "13-4-train":
         print(f"[GHA] 13-4 练级梯队数量={train_team_count}（从梯队2开始）", flush=True)
-    if module_key == "pick-data":
-        print("[GHA] pick 模式=获取训练资料，默认发送 -1 / -r。", flush=True)
-    if module_key == "pick-train":
-        print("[GHA] pick 模式=自动训练，默认发送 -2 / -count / -run。", flush=True)
+    if module_key == "pick-and-train":
+        print("[GHA] pick_and_train：先自动训练；资料不足时切换获取资料，达到模块内条件后返回训练。", flush=True)
     print(f"[GHA] compact_log={'on' if compact else 'off'}", flush=True)
     proc = subprocess.Popen(
         cmd,

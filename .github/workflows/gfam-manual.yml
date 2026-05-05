@@ -15,10 +15,7 @@ on:
           - f2p
           - f2p_pr
           - smart
-          - pick-data
-          - pick-train
-          - pick
-          - epa
+          - pick_and_train
       server:
         description: "服务器"
         required: true
@@ -61,7 +58,7 @@ on:
         type: string
         default: ""
       start_commands:
-        description: "自定义启动命令，可留空；13-4 与 pick-data/pick-train 会自动补全默认启动命令"
+        description: "自定义启动命令，可留空；13-4 与 pick_and_train 会自动补全默认启动命令"
         required: false
         type: string
         default: ""
