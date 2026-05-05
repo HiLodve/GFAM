@@ -123,6 +123,54 @@ NOISY_LINE_PATTERNS = [
     re.compile(r"^\s*[-=]{8,}\s*$"),
 ]
 
+# Module summary/statistics blocks must survive compact filtering as complete
+# sections.  Some modules print their final summaries without a single fixed
+# header format, so we recognize both explicit headers and common summary lines.
+STATS_HEADER_PATTERNS = [
+    re.compile(r"^=+\s*.*统计.*=+\s*$"),
+    re.compile(r"^=+\s*.*运行结束.*=+\s*$"),
+    re.compile(r"^=+\s*.*本次运行.*=+\s*$"),
+    re.compile(r"^=+\s*.*资源.*=+\s*$"),
+]
+
+STATS_START_KEYWORDS = (
+    "本次运行统计",
+    "运行统计",
+    "本次运行结束",
+    "运行结束统计",
+    "GHA 四项基础资源统计",
+    "妖精自动建造/强化统计",
+)
+
+STATS_LINE_KEYWORDS = (
+    "运行总时长",
+    "总运行时长",
+    "完成彩蛋任务",
+    "本次运行累计",
+    "本次进入",
+    "本次本地消耗",
+    "当前灰域进度",
+    "积分缓存来源",
+    "当前票券类型",
+    "四项模式消耗规则",
+    "目标装备掉落",
+    "目标人形掉落",
+    "目标掉落",
+    "掉落统计",
+    "资源统计",
+    "资源变化",
+    "四项基础资源统计",
+    "本次变化",
+    "每小时效率",
+    "起始库存",
+    "结束库存",
+    "当前妖精仓库",
+    "妖精建造启动",
+    "妖精领取",
+    "妖精强化",
+    "本次模块运行期间",
+)
+
 # Lines that should always survive compact filtering.
 IMPORTANT_KEYWORDS = (
     "[GHA]",
@@ -445,18 +493,39 @@ class OutputFilter:
         return None
 
     def _is_stats_header(self, stripped: str) -> bool:
-        return "统计" in stripped and (stripped.startswith("=") or stripped.startswith("-"))
+        if any(pattern.search(stripped) for pattern in STATS_HEADER_PATTERNS):
+            return True
+        return any(keyword in stripped for keyword in STATS_START_KEYWORDS)
+
+    def _looks_like_stats_line(self, stripped: str) -> bool:
+        return any(keyword in stripped for keyword in STATS_LINE_KEYWORDS)
 
     def _filter_stats_block(self, line: str, stripped: str) -> str | None:
+        # Preserve explicit final summary blocks completely.  These are the
+        # most useful lines in compact GHA logs and should not be swallowed by
+        # generic dashboard/noisy-line filtering.
         if self._is_stats_header(stripped):
             self._in_stats_block = True
             self._stats_lines_seen = 1
             return line
+
         if self._in_stats_block:
             self._stats_lines_seen += 1
             if self._stats_lines_seen > 1 and DASHBOARD_FOOTER_RE.match(stripped):
                 self._in_stats_block = False
                 self._stats_lines_seen = 0
+                return line
+            # Safety valve: if a module forgets to print a footer, avoid
+            # keeping the rest of the whole job as a stats block.
+            if self._stats_lines_seen > 160:
+                self._in_stats_block = False
+                self._stats_lines_seen = 0
+            return line
+
+        # Some modules print compact summary lines without an obvious block
+        # header.  Keep these one-off lines as well, especially f2p/f2p_pr
+        # resource and drop summaries.
+        if self._looks_like_stats_line(stripped):
             return line
         return None
 
