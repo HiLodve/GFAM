@@ -1,0 +1,10 @@
+# A-10 四项资源获取运行间隔优化
+
+- 将 A-10 直接结算方案默认步骤间隔缩短为 0.05 秒。
+- 将成功轮次之间的等待缩短为 0.20 秒。
+- 将失败后的重试等待缩短为 0.50 秒。
+- 新增环境变量覆盖：
+  - GFAM_A10_STEP_DELAY
+  - GFAM_A10_ROUND_DELAY
+  - GFAM_A10_FAILURE_DELAY
+- 不修改 A-10 流程本身，仍为 startMission -> endTurn -> startEnemyTurn -> endEnemyTurn -> startTurn。

@@ -72,6 +72,15 @@ CONFIG = {
     "MAX_CONSECUTIVE_FAILURES": 8,
 }
 
+# A-10 方案不移动、不进战斗，流程很短；默认间隔可以比 EPA 战斗模块更低。
+# 如需回退保守速度，可在本地/GHA 环境变量中覆盖：
+#   GFAM_A10_STEP_DELAY=0.15
+#   GFAM_A10_ROUND_DELAY=1.0
+#   GFAM_A10_FAILURE_DELAY=2.0
+A10_STEP_DELAY = max(0.0, float(os.environ.get("GFAM_A10_STEP_DELAY", "0.05") or 0.05))
+A10_ROUND_DELAY = max(0.0, float(os.environ.get("GFAM_A10_ROUND_DELAY", "0.20") or 0.20))
+A10_FAILURE_DELAY = max(0.0, float(os.environ.get("GFAM_A10_FAILURE_DELAY", "0.50") or 0.50))
+
 current_worker_thread = None
 worker_mode = None
 proxy_instance = None
@@ -309,13 +318,16 @@ def run_one_a10_resource(client: GFLClient) -> Optional[dict]:
     # 最终以 startTurn 响应里的 mission_win_result 作为胜利结算来源。
     if check_step_error(client.send_request(API_MISSION_END_TURN, {}), "endTurn"):
         return None
-    time.sleep(0.15)
+    if A10_STEP_DELAY:
+        time.sleep(A10_STEP_DELAY)
     if check_step_error(client.send_request(API_MISSION_START_ENEMY_TURN, {}), "startEnemyTurn"):
         return None
-    time.sleep(0.15)
+    if A10_STEP_DELAY:
+        time.sleep(A10_STEP_DELAY)
     if check_step_error(client.send_request(API_MISSION_END_ENEMY_TURN, {}), "endEnemyTurn"):
         return None
-    time.sleep(0.15)
+    if A10_STEP_DELAY:
+        time.sleep(A10_STEP_DELAY)
     win_resp = client.send_request(API_MISSION_START_TURN, {})
     if check_step_error(win_resp, "startTurn"):
         return None
@@ -395,6 +407,7 @@ def a10_resource_worker() -> None:
 
     print("=== A-10 四项资源获取 Started ===")
     print("[*] 本方案只部署第一梯队；第一梯队必须为单人梯队；不移动、不 battleFinish，直接结束回合并结算。")
+    print("[*] A-10 快速间隔：步骤 %.2fs / 轮间 %.2fs / 失败 %.2fs。" % (A10_STEP_DELAY, A10_ROUND_DELAY, A10_FAILURE_DELAY))
     index_payload = request_index(client, "运行前 Index/index")
     if index_payload is None:
         print("[!] 运行前 Index/index 失败，已停止。")
@@ -423,7 +436,8 @@ def a10_resource_worker() -> None:
             if consecutive_failures >= int(CONFIG.get("MAX_CONSECUTIVE_FAILURES", 8)):
                 print("[!] 连续失败达到上限，已停止。")
                 break
-            time.sleep(2)
+            if A10_FAILURE_DELAY:
+                time.sleep(A10_FAILURE_DELAY)
             continue
 
         consecutive_failures = 0
@@ -435,7 +449,8 @@ def a10_resource_worker() -> None:
         retired = retire_guns(client, guns, reason="A-10 胜利结算后人形拆解") if guns else retire_guns(client, [], reason="A-10 空掉落拆解确认")
         RUN_STATS["retired_gun_count"] = int(RUN_STATS.get("retired_gun_count", 0) or 0) + int(retired or 0)
         print("[A-10] 第 %d 轮完成；本轮掉落：%s" % (macro, RUN_STATS["last_drop"]))
-        time.sleep(1)
+        if A10_ROUND_DELAY:
+            time.sleep(A10_ROUND_DELAY)
 
     print("[*] A-10 四项资源获取正在结束，申请一次 Index/index 统计资源变化……")
     end_payload = request_index(client, "结束 Index/index")
@@ -458,6 +473,7 @@ def print_menu() -> None:
     print("----------------------------------------------------------")
     print("说明：运行前会请求一次 Index/index 校验第一梯队是否为单人，并记录四项起始库存。")
     print("说明：运行中不移动、不 battleFinish；结束时再次请求 Index/index 统计四项变化。")
+    print("说明：默认快速间隔 步骤 %.2fs / 轮间 %.2fs，可用 GFAM_A10_STEP_DELAY 等环境变量覆盖。" % (A10_STEP_DELAY, A10_ROUND_DELAY))
     print("==========================================================\n")
 
 
