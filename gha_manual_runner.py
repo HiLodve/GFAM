@@ -169,6 +169,22 @@ STATS_LINE_KEYWORDS = (
     "本次模块运行期间",
 )
 
+# Lines that mean the foreground module has already finished its worker, printed
+# a menu/final stats, or is safe to receive ``-E``.  This prevents the GHA
+# runner from waiting the full stop grace period after f2p/f2p_pr have already
+# returned to their menu.
+STOP_READY_KEYWORDS = (
+    "本次运行结束",
+    "运行结束统计",
+    "本次运行统计",
+    "GHA 四项基础资源统计",
+    "MENU",
+    "menu",
+    "已安全退出",
+    "已停止",
+    "后台循环已停止",
+)
+
 # Lines that should always survive compact filtering.
 IMPORTANT_KEYWORDS = (
     "[GHA]",
@@ -418,20 +434,29 @@ def send_commands(proc: subprocess.Popen, commands: Iterable[str], delay: float 
         time.sleep(delay)
 
 
-def send_default_stop_sequence(proc: subprocess.Popen, first_wait_seconds: int = 75) -> bool:
+def send_default_stop_sequence(
+    proc: subprocess.Popen,
+    stop_ready_event: threading.Event | None = None,
+    first_wait_seconds: int = 75,
+) -> bool:
     """Safely stop interactive modules without swallowing final statistics.
 
     Sending ``-q`` and ``-E`` back-to-back can make some modules leave their
     menu before the worker has printed final statistics.  GHA therefore sends
-    ``-q`` first, waits for the current macro/worker to settle, and only then
-    sends ``-E`` if the process is still alive.  Return True if the process has
-    exited before ``-E`` is needed.
+    ``-q`` first, but it no longer blindly waits the whole grace period: if the
+    output stream already shows a final summary/menu, it sends ``-E`` at once.
+    Return True if the process exits before ``-E`` is needed.
     """
     send_commands(proc, ["-q"], delay=0.2)
     wait_time = max(5, int(os.environ.get("GFAM_GHA_STOP_WAIT_SECONDS", str(first_wait_seconds)) or first_wait_seconds))
-    print(f"[GHA] 已发送 -q，等待 {wait_time} 秒让模块输出结算/统计。", flush=True)
-    if wait_until(proc, wait_time):
+    print(f"[GHA] 已发送 -q，最多等待 {wait_time} 秒；检测到统计/菜单后会立即发送 -E。", flush=True)
+    state = wait_until_stop_ready(proc, stop_ready_event, wait_time)
+    if state == "exited":
         return True
+    if state == "ready":
+        print("[GHA] 已检测到模块统计或菜单输出，发送 -E 退出。", flush=True)
+    else:
+        print("[GHA] 等待期结束，发送 -E 退出。", flush=True)
     send_commands(proc, ["-E"], delay=0.2)
     return proc.poll() is not None
 
@@ -442,6 +467,7 @@ class OutputFilter:
     def __init__(self, compact: bool = True, reset_log_every: int = 10) -> None:
         self.compact = compact
         self.reset_log_every = max(1, int(reset_log_every or 10))
+        self.stop_ready_event = threading.Event()
         self._in_dashboard = False
         self._suppressed_dashboard_blocks = 0
         self._reset_attempts_seen = 0
@@ -454,6 +480,10 @@ class OutputFilter:
         self._recent_lines: dict[str, float] = {}
         self._duplicate_suppressed = 0
         self._last_duplicate_heartbeat = 0.0
+
+    def _mark_stop_ready_if_needed(self, stripped: str) -> None:
+        if stripped and any(keyword in stripped for keyword in STOP_READY_KEYWORDS):
+            self.stop_ready_event.set()
 
     def _should_emit_deduped(self, stripped: str) -> bool:
         """Suppress identical key lines replayed by fixed-dashboard recent logs."""
@@ -544,11 +574,13 @@ class OutputFilter:
         return None
 
     def filter_line(self, raw_line: str) -> str | None:
-        if not self.compact:
-            return raw_line.rstrip("\n")
-
         line = raw_line.rstrip("\n")
         stripped = line.strip()
+        self._mark_stop_ready_if_needed(stripped)
+
+        if not self.compact:
+            return line
+
 
         if self._in_dashboard:
             if DASHBOARD_FOOTER_RE.match(stripped):
@@ -623,6 +655,25 @@ def wait_until(proc: subprocess.Popen, seconds: int) -> bool:
             return True
         time.sleep(1)
     return proc.poll() is not None
+
+
+def wait_until_stop_ready(proc: subprocess.Popen, event: threading.Event | None, seconds: int) -> str:
+    """Wait until process exits, final menu/statistics appear, or timeout.
+
+    Return ``exited``, ``ready`` or ``timeout``.
+    """
+    deadline = time.time() + max(0, seconds)
+    while time.time() < deadline:
+        if proc.poll() is not None:
+            return "exited"
+        if event is not None and event.is_set():
+            return "ready"
+        time.sleep(1)
+    if proc.poll() is not None:
+        return "exited"
+    if event is not None and event.is_set():
+        return "ready"
+    return "timeout"
 
 
 def terminate_process(proc: subprocess.Popen) -> None:
@@ -754,7 +805,7 @@ def main(argv: list[str] | None = None) -> int:
         if explicit_stop:
             send_commands(proc, explicit_stop, delay=2.0)
         else:
-            send_default_stop_sequence(proc)
+            send_default_stop_sequence(proc, output_filter.stop_ready_event)
         if wait_until(proc, 180):
             output_thread.join(timeout=5)
             return finish(proc.returncode or 0)
