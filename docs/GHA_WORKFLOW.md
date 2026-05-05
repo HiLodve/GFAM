@@ -153,3 +153,17 @@ GFAM_GHA_RESOURCE_SUMMARY=0
 ### 停止流程说明
 
 默认停止流程为先发送 `-q`。GHA runner 会监听模块输出；如果检测到“本次运行结束”、最终统计或模块菜单已经出现，会立即发送 `-E` 退出，不再固定等待完整停止宽限时间。这样可以保留结算统计，同时避免 f2p/f2p_pr 已回到菜单后仍继续占用 job 时间。
+
+## 7. 子进程退出码处理
+
+部分交互式模块在安全退出、无可执行任务或菜单返回时可能返回非 0 退出码。GHA runner 会在打印运行后资源统计后做一次归一化：
+
+- 未检测到 Python / shell / 依赖类技术性错误时，非 0 子进程退出码按交互模块正常结束处理；
+- 检测到 `Traceback`、`SyntaxError`、`ImportError`、缺少 UID/SIGN 等技术性错误时，仍保持失败状态；
+- 超时后被 runner terminate/kill 的情况仍视为失败。
+
+如需关闭该兼容行为，可在 workflow 环境中设置：
+
+```env
+GFAM_GHA_TOLERATE_MODULE_EXIT=0
+```

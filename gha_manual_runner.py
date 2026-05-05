@@ -223,6 +223,21 @@ IMPORTANT_KEYWORDS = (
     "强化",
 )
 
+# Technical failures from Python/shell should still fail the GitHub Actions job.
+# Normal GFAM modules, however, sometimes return code 1 after an interactive
+# safe exit or an internal menu stop.  The runner therefore normalizes non-zero
+# child exit codes only when no technical fatal line was seen.
+FATAL_LINE_PATTERNS = [
+    re.compile(r"Traceback \(most recent call last\)"),
+    re.compile(r"\b(SyntaxError|IndentationError|ModuleNotFoundError|ImportError|NameError|TypeError)\b"),
+    re.compile(r"No such file or directory", re.IGNORECASE),
+    re.compile(r"Permission denied", re.IGNORECASE),
+    re.compile(r"command not found", re.IGNORECASE),
+    re.compile(r"找不到\s*run_gha\.sh"),
+    re.compile(r"缺少\s*GFAM_USER_UID"),
+    re.compile(r"缺少\s*GFAM_SIGN_KEY"),
+]
+
 
 def is_truthy(value: str | None, default: bool = False) -> bool:
     if value is None:
@@ -480,10 +495,13 @@ class OutputFilter:
         self._recent_lines: dict[str, float] = {}
         self._duplicate_suppressed = 0
         self._last_duplicate_heartbeat = 0.0
+        self.fatal_event = threading.Event()
 
     def _mark_stop_ready_if_needed(self, stripped: str) -> None:
         if stripped and any(keyword in stripped for keyword in STOP_READY_KEYWORDS):
             self.stop_ready_event.set()
+        if stripped and any(pattern.search(stripped) for pattern in FATAL_LINE_PATTERNS):
+            self.fatal_event.set()
 
     def _should_emit_deduped(self, stripped: str) -> bool:
         """Suppress identical key lines replayed by fixed-dashboard recent logs."""
@@ -694,6 +712,29 @@ def terminate_process(proc: subprocess.Popen) -> None:
             pass
 
 
+def normalize_child_exit_code(exit_code: int | None, output_filter: OutputFilter, forced_failure: bool = False) -> int:
+    """Return the GitHub Actions step exit code for an interactive GFAM run.
+
+    Some GFAM interactive modules still use ``sys.exit(1)`` for menu exits,
+    early no-op runs, or safe-stop branches.  In GitHub Actions these should
+    not make the workflow red after the runner has collected ending resource
+    statistics.  Real infrastructure/Python failures are detected by fatal log
+    patterns and remain failures.
+    """
+    code = int(exit_code or 0)
+    if forced_failure:
+        return code if code != 0 else 124
+    if code == 0:
+        return 0
+    if output_filter.fatal_event.is_set():
+        print(f"[GHA] 子进程返回 {code}，且检测到技术性错误日志，保留失败状态。", flush=True)
+        return code
+    if is_truthy(os.environ.get("GFAM_GHA_TOLERATE_MODULE_EXIT", "1"), default=True):
+        print(f"[GHA] 子进程返回 {code}；未检测到技术性错误，按交互模块正常结束处理。", flush=True)
+        return 0
+    return code
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run GFAM module from GitHub Actions with scripted commands.")
     parser.add_argument("--module", default=os.environ.get("GFAM_GHA_MODULE", "greyzone"), help="GFAM module id, e.g. greyzone / f2p / 13-4-train / 13-4-resource / pick_and_train / smart")
@@ -772,9 +813,9 @@ def main(argv: list[str] | None = None) -> int:
     output_filter = OutputFilter(compact=compact, reset_log_every=reset_log_every)
     output_thread = stream_output(proc, output_filter)
 
-    def finish(exit_code: int) -> int:
+    def finish(exit_code: int | None, forced_failure: bool = False) -> int:
         print_resource_summary_if_needed(module_key, uid, sign, args.server, resource_start_inv, resource_start_time)
-        return exit_code
+        return normalize_child_exit_code(exit_code, output_filter, forced_failure=forced_failure)
 
     try:
         # Give the child process time to print menus and start reading input.
@@ -811,13 +852,13 @@ def main(argv: list[str] | None = None) -> int:
             return finish(proc.returncode or 0)
         terminate_process(proc)
         output_thread.join(timeout=5)
-        return finish(proc.returncode if proc.returncode is not None else 124)
+        return finish(proc.returncode if proc.returncode is not None else 124, forced_failure=True)
     except KeyboardInterrupt:
         print("[GHA] 收到中断，发送安全停止。", flush=True)
         send_commands(proc, DEFAULT_STOP_COMMANDS, delay=1.0)
         terminate_process(proc)
         output_thread.join(timeout=5)
-        return finish(130)
+        return finish(130, forced_failure=True)
 
 
 if __name__ == "__main__":
