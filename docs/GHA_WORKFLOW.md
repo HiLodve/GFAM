@@ -167,3 +167,15 @@ GFAM_GHA_RESOURCE_SUMMARY=0
 ```env
 GFAM_GHA_TOLERATE_MODULE_EXIT=0
 ```
+
+
+## smart 一键打捞 GHA 模式
+
+GHA 中不再使用单一 `smart` 选项，而是拆分为：
+
+- `smart-gun`：人形一键打捞（普通/紧急）。默认自动发送 `-gun`、`-r`、`-run`、`-r`。
+- `smart-equip`：装备一键打捞（夜战专属装备）。默认自动发送 `-equip`、`-r`、`-run`、`-r`。
+
+原 `smart` / `epa` 仍作为兼容别名映射到 `smart-gun`。
+
+`compact_log=true` 时会隐藏 smart 计划中的大段编号目标列表，只保留计划生成、当前路线、运行、错误、停止与结束统计等关键日志。

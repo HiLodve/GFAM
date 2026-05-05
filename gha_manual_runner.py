@@ -44,7 +44,11 @@ DEFAULT_START_COMMANDS = {
     "f2p": ["-r", "-y"],
     "f2p_pr": ["-r", "-y"],
     "f2p-pr": ["-r", "-y"],
-    "smart": ["-r"],
+    # smart 在 GHA 中拆分为人形/装备两种入口。
+    # -r 只会生成计划并进入「输入 -run 确认」阶段，因此必须自动补 -run，再次 -r 才会真正开跑。
+    "smart": ["-gun", "-r", "-run", "-r"],
+    "smart-gun": ["-gun", "-r", "-run", "-r"],
+    "smart-equip": ["-equip", "-r", "-run", "-r"],
 }
 
 GHA_MODULE_TO_GFAM_MODULE = {
@@ -60,6 +64,10 @@ GHA_MODULE_TO_GFAM_MODULE = {
     "pick-data": "pick",
     "pick-train": "pick",
     "pick": "pick",
+    "smart-gun": "smart",
+    "smart-equip": "smart",
+    "smart-doll": "smart",
+    "smart-equipment": "smart",
     # EPA 的参数链太长，GHA 中用 smart 一键打捞入口替代；保留 epa 作为兼容别名。
     "epa": "smart",
 }
@@ -109,6 +117,10 @@ NOISY_LINE_PATTERNS = [
     re.compile(r"^\s*预计完成[:：]"),
     re.compile(r"^\s*总运行时间[:：]"),
     re.compile(r"^\s*停止[:：]"),
+
+    # Smart EPA plan list can contain 80+ target rows; keep the plan summary and current-route lines,
+    # but hide the numbered target catalog in compact GHA logs.
+    re.compile(r"^\s*\d{1,3}\.\s*(普通|紧急|夜战)\s+A-", re.IGNORECASE),
 
     # Fairy auto routine dashboard/status refreshes. Keep real action/error
     # lines via IMPORTANT_KEYWORDS, but suppress repeated counters such as
@@ -303,8 +315,15 @@ def normalize_gha_module(value: str | None) -> str:
         "pick": "pick-and-train",
         "train": "pick-and-train",
         "auto-train": "pick-and-train",
-        "epa": "smart",
-        "epa-plus": "smart",
+        "smart": "smart-gun",
+        "smart-gun": "smart-gun",
+        "smart-doll": "smart-gun",
+        "smart-human": "smart-gun",
+        "smart-equip": "smart-equip",
+        "smart-equipment": "smart-equip",
+        "smart-eq": "smart-equip",
+        "epa": "smart-gun",
+        "epa-plus": "smart-gun",
     }
     return aliases.get(text, text)
 
@@ -745,7 +764,7 @@ def normalize_child_exit_code(exit_code: int | None, output_filter: OutputFilter
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run GFAM module from GitHub Actions with scripted commands.")
-    parser.add_argument("--module", default=os.environ.get("GFAM_GHA_MODULE", "greyzone"), help="GFAM module id, e.g. greyzone / f2p / 13-4-train / 13-4-resource / pick_and_train / smart")
+    parser.add_argument("--module", default=os.environ.get("GFAM_GHA_MODULE", "greyzone"), help="GFAM module id, e.g. greyzone / f2p / 13-4-train / 13-4-resource / pick_and_train / smart-gun / smart-equip")
     parser.add_argument("--server", default=os.environ.get("GFAM_SERVER", "SOP"), help="Server: SOP/RO635/M4A1/M16/AR-15/EN")
     parser.add_argument("--fairy", action="store_true", help="Enable fairy automation for this run")
     parser.add_argument("--no-fairy", action="store_true", help="Disable fairy automation for this run")
@@ -799,6 +818,10 @@ def main(argv: list[str] | None = None) -> int:
         print(f"[GHA] 13-4 练级梯队数量={train_team_count}（从梯队2开始）", flush=True)
     if module_key == "pick-and-train":
         print("[GHA] pick_and_train：先自动训练；资料不足时切换获取资料，达到模块内条件后返回训练。", flush=True)
+    if module_key == "smart-gun":
+        print("[GHA] smart-gun：人形一键打捞，自动发送 -gun / -r / -run / -r。", flush=True)
+    if module_key == "smart-equip":
+        print("[GHA] smart-equip：装备一键打捞，自动发送 -equip / -r / -run / -r。", flush=True)
     print(f"[GHA] compact_log={'on' if compact else 'off'}", flush=True)
 
     resource_start_time = time.time()
