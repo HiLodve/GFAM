@@ -21,10 +21,21 @@ import sys
 import threading
 import time
 from pathlib import Path
-from typing import Iterable, List
+from typing import Iterable, List, Optional, Dict
 
 ROOT = Path(__file__).resolve().parent
 RUN_GHA = ROOT / "run_gha.sh"
+
+ZIRC_CORE = ROOT / "libs" / "ZIRC" / "src" / "core"
+if ZIRC_CORE.exists() and str(ZIRC_CORE) not in sys.path:
+    sys.path.insert(0, str(ZIRC_CORE))
+
+try:
+    from gflzirc import GFLClient, SERVERS, API_INDEX_INDEX
+except Exception:  # pragma: no cover - GitHub Actions will surface a warning instead of failing import-time
+    GFLClient = None  # type: ignore[assignment]
+    SERVERS = {}  # type: ignore[assignment]
+    API_INDEX_INDEX = "Index/index"
 
 DEFAULT_START_COMMANDS = {
     "greyzone": ["-r"],
@@ -49,6 +60,24 @@ GHA_MODULE_TO_GFAM_MODULE = {
 }
 
 DEFAULT_STOP_COMMANDS = ["-q", "-E"]
+
+RESOURCE_KEYS = ("mp", "ammo", "mre", "part")
+RESOURCE_LABELS = {
+    "mp": "人力",
+    "ammo": "弹药",
+    "mre": "口粮",
+    "part": "零件",
+}
+
+# These modules already print their own resource summary at run end.  The GHA
+# wrapper only supplements modules that do not have a built-in summary, so we
+# avoid duplicating output.
+MODULES_WITH_BUILTIN_RESOURCE_SUMMARY = {
+    "13-4-train",
+    "13-4-resource",
+    "f2p",
+    "f2p_pr",
+}
 
 # Fixed dashboard headers. In local Windows runs these are useful; in GHA they
 # generate very long logs because every refresh becomes permanent text.
@@ -213,6 +242,121 @@ def build_default_start_commands(module_key: str, train_team_count: int) -> List
         # 训练材料不足 -> 自动切换获取训练资料；中级资料达到本模式上限/coin2+0 -> 回到训练。
         return ["-2", "-count", "-run"]
     return list(DEFAULT_START_COMMANDS.get(module_key, []))
+
+
+def should_collect_resource_summary(module_key: str) -> bool:
+    """Return whether the GHA wrapper should add a resource summary.
+
+    13-4/f2p/f2p_pr already have module-side resource statistics, so the
+    wrapper does not print a duplicate summary for them.  Other GHA modules are
+    supplemented by a start/end Index/index comparison.
+    """
+    if not is_truthy(os.environ.get("GFAM_GHA_RESOURCE_SUMMARY", "1"), default=True):
+        return False
+    return module_key not in MODULES_WITH_BUILTIN_RESOURCE_SUMMARY
+
+
+def normalize_server_for_zirc(server: str | None) -> str:
+    text = str(server or "SOP").strip()
+    aliases = {
+        "AR-15": "AR15",
+        "AR_15": "AR15",
+        "AR15": "AR15",
+    }
+    return aliases.get(text, text)
+
+
+def safe_int(value, default: int = 0) -> int:
+    try:
+        if value is None:
+            return default
+        return int(float(str(value).strip()))
+    except Exception:
+        return default
+
+
+def extract_resources_from_index(payload: dict | None) -> Optional[Dict[str, int]]:
+    if not isinstance(payload, dict):
+        return None
+    user_info = payload.get("user_info")
+    if not isinstance(user_info, dict):
+        return None
+    return {key: safe_int(user_info.get(key), 0) for key in RESOURCE_KEYS}
+
+
+def format_resource_inventory(inv: Dict[str, int] | None, signed: bool = False) -> str:
+    inv = inv or {key: 0 for key in RESOURCE_KEYS}
+    parts = []
+    for key in RESOURCE_KEYS:
+        value = safe_int(inv.get(key), 0)
+        text = f"{value:+d}" if signed else str(value)
+        parts.append(f"{RESOURCE_LABELS[key]} {text}")
+    return " / ".join(parts)
+
+
+def request_resource_snapshot(uid: str, sign: str, server: str, label: str) -> Optional[Dict[str, int]]:
+    if GFLClient is None or not SERVERS:
+        print(f"[GHA][资源] {label}：无法导入 gflzirc，跳过 GHA 资源统计。", flush=True)
+        return None
+
+    server_key = normalize_server_for_zirc(server)
+    base_url = SERVERS.get(server_key)
+    if not base_url:
+        print(f"[GHA][资源] {label}：未知服务器 {server}，跳过 GHA 资源统计。", flush=True)
+        return None
+
+    try:
+        client = GFLClient(uid, sign, base_url)
+        payload = {"time": int(time.time()), "furniture_data": False}
+        resp = client.send_request(API_INDEX_INDEX, payload, max_retries=2, timeout=20)
+    except Exception as exc:
+        print(f"[GHA][资源] {label}：请求 Index/index 失败：{exc}", flush=True)
+        return None
+
+    if not isinstance(resp, dict) or resp.get("error_local") or resp.get("error"):
+        preview = resp.get("raw_preview") if isinstance(resp, dict) else None
+        print(f"[GHA][资源] {label}：Index/index 返回异常，跳过本次 GHA 资源统计。{(' 预览：' + str(preview)) if preview else ''}", flush=True)
+        return None
+
+    inv = extract_resources_from_index(resp)
+    if inv is None:
+        print(f"[GHA][资源] {label}：未能从 Index/index 解析 user_info 四项资源。", flush=True)
+        return None
+
+    print(f"[GHA][资源] {label}：{format_resource_inventory(inv)}", flush=True)
+    return inv
+
+
+def print_resource_summary_if_needed(
+    module_key: str,
+    uid: str,
+    sign: str,
+    server: str,
+    start_inv: Optional[Dict[str, int]],
+    start_time: float,
+) -> None:
+    if start_inv is None:
+        return
+
+    end_inv = request_resource_snapshot(uid, sign, server, "结束库存")
+    if end_inv is None:
+        print("[GHA][资源] 结束库存获取失败，无法计算本次四项变化。", flush=True)
+        return
+
+    diff = {key: safe_int(end_inv.get(key), 0) - safe_int(start_inv.get(key), 0) for key in RESOURCE_KEYS}
+    elapsed = max(1, int(time.time() - start_time))
+    per_hour = {key: int(round(safe_int(diff.get(key), 0) * 3600 / elapsed)) for key in RESOURCE_KEYS}
+
+    print("", flush=True)
+    print("=========== GHA 四项基础资源统计 ===========", flush=True)
+    print(f"模块：{module_key}    服务器：{server}", flush=True)
+    print(f"运行总时长：{elapsed} 秒", flush=True)
+    print(f"起始库存：{format_resource_inventory(start_inv)}", flush=True)
+    print(f"结束库存：{format_resource_inventory(end_inv)}", flush=True)
+    print(f"本次变化：{format_resource_inventory(diff, signed=True)}", flush=True)
+    print(f"每小时效率：{format_resource_inventory(per_hour, signed=True)}", flush=True)
+    print("说明：该统计由 GHA runner 在运行前后各请求一次 Index/index 计算；13-4/f2p/f2p_pr 已有模块内统计时不会重复打印。", flush=True)
+    print("===========================================", flush=True)
 
 
 def send_commands(proc: subprocess.Popen, commands: Iterable[str], delay: float = 0.6) -> None:
@@ -473,6 +617,14 @@ def main(argv: list[str] | None = None) -> int:
     if module_key == "pick-and-train":
         print("[GHA] pick_and_train：先自动训练；资料不足时切换获取资料，达到模块内条件后返回训练。", flush=True)
     print(f"[GHA] compact_log={'on' if compact else 'off'}", flush=True)
+
+    resource_start_time = time.time()
+    resource_start_inv: Optional[Dict[str, int]] = None
+    if should_collect_resource_summary(module_key):
+        resource_start_inv = request_resource_snapshot(uid, sign, args.server, "起始库存")
+    else:
+        print("[GHA][资源] 当前模块已有运行结束资源统计，GHA wrapper 不重复打印。", flush=True)
+
     proc = subprocess.Popen(
         cmd,
         cwd=str(ROOT),
@@ -485,6 +637,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     output_filter = OutputFilter(compact=compact, reset_log_every=reset_log_every)
     output_thread = stream_output(proc, output_filter)
+
+    def finish(exit_code: int) -> int:
+        print_resource_summary_if_needed(module_key, uid, sign, args.server, resource_start_inv, resource_start_time)
+        return exit_code
 
     try:
         # Give the child process time to print menus and start reading input.
@@ -508,23 +664,23 @@ def main(argv: list[str] | None = None) -> int:
         print(f"[GHA] 运行窗口：{args.run_minutes} 分钟。", flush=True)
         if wait_until(proc, run_seconds):
             output_thread.join(timeout=5)
-            return proc.returncode or 0
+            return finish(proc.returncode or 0)
 
         stop_commands = parse_lines(args.stop_commands) or DEFAULT_STOP_COMMANDS
         print("[GHA] 到达运行窗口，发送安全停止命令。", flush=True)
         send_commands(proc, stop_commands, delay=2.0)
         if wait_until(proc, 180):
             output_thread.join(timeout=5)
-            return proc.returncode or 0
+            return finish(proc.returncode or 0)
         terminate_process(proc)
         output_thread.join(timeout=5)
-        return proc.returncode if proc.returncode is not None else 124
+        return finish(proc.returncode if proc.returncode is not None else 124)
     except KeyboardInterrupt:
         print("[GHA] 收到中断，发送安全停止。", flush=True)
         send_commands(proc, DEFAULT_STOP_COMMANDS, delay=1.0)
         terminate_process(proc)
         output_thread.join(timeout=5)
-        return 130
+        return finish(130)
 
 
 if __name__ == "__main__":

@@ -117,3 +117,9 @@ GitHub Actions 页面不适合长期显示本地版那种固定下方仪表盘�
 开启 `compact_log` 时，GHA 会隐藏妖精自动固定状态行与重复计数行，例如 `妖精自动：操作 建造启动 0/0，领取 0/1，强化 0/0；状态 ...`。实际建造、领取、强化的成功/失败、错误、停止和运行结束统计仍会保留。
 
 排查路线或接口问题时，可以在 Run workflow 页面将 `compact_log` 改为 `false`，临时恢复完整日志。
+
+## 7. GHA 运行结束资源统计
+
+在 GitHub Actions 中运行时，`gha_manual_runner.py` 会为没有模块内资源统计的模块补充运行前后资源对比。该统计通过运行前、运行结束后各请求一次 `Index/index` 获得，不会在运行中反复请求。
+
+`13-4`、`f2p`、`f2p_pr` 已有模块内资源统计，GHA wrapper 不重复打印。`greyzone`、`smart`、`pick_and_train` 等模块会在结束时显示 GHA 四项基础资源统计。
