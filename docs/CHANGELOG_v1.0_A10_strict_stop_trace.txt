@@ -1,0 +1,21 @@
+GFAM v1.0 - A-10 严格收尾与资源追踪补丁
+
+变更内容：
+1. GHA 停止流程修正
+   - 发送 -q 前清空旧的 stop_ready 标记，避免启动菜单中的 MENU 被误判为可退出。
+   - a10-resource 使用专用停止判定，不再套用普通模块的 MENU/统计关键词。
+   - a10-resource 必须等模块输出 [A10-FINAL-STATS-DONE] / “A-10 收尾完成，可以退出” 后，GHA 才会发送 -E。
+   - 默认 A-10 停止等待时间改为 180 秒，可用 GFAM_GHA_A10_STOP_WAIT_SECONDS 覆盖。
+
+2. A-10 模块收尾保护
+   - A-10 worker 完成 pending 掉落批量拆解、结束 Index/index、状态面板和资源统计后，输出最终收尾标记。
+   - 手动输入 -E 时，如果 A-10 worker 仍在运行，会先等待当前轮/收尾统计完成，避免中途退出截断统计。
+   - 等待时间可用 GFAM_A10_EXIT_JOIN_SECONDS 覆盖，默认 30 秒。
+
+3. A-10 资源追踪调试开关
+   - 新增 GFAM_A10_TRACE_RESOURCE=1。
+   - 开启后会在 startMission 前、startMission 后、startTurn 结算后、批量拆解后、收尾批量拆解后额外请求 Index/index 并打印四项资源。
+   - 默认关闭，不影响正常速度。
+
+4. 保持 A-10 2RPS 尝试参数
+   - 默认仍为 GFAM_A10_TARGET_RPS=2.0，步骤间隔 0.01s，额外轮间 0.00s，失败间隔 0.30s。

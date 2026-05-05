@@ -222,6 +222,15 @@ STOP_READY_KEYWORDS = (
     "后台循环已停止",
 )
 
+# A-10 收尾必须比普通交互模块更严格：
+# 开局菜单也包含 MENU，通用规则容易在发送 -q 后立即判定为可退出，
+# 进而打断 A-10 的 pending 掉落批量拆解、结束 Index 和资源统计。
+# 因此 a10-resource 只认模块侧最终收尾标记。
+A10_STOP_READY_KEYWORDS = (
+    "[A10-FINAL-STATS-DONE]",
+    "A-10 收尾完成，可以退出",
+)
+
 # Lines that should always survive compact filtering.
 IMPORTANT_KEYWORDS = (
     "[GHA]",
@@ -541,6 +550,10 @@ def send_default_stop_sequence(
     output stream already shows a final summary/menu, it sends ``-E`` at once.
     Return True if the process exits before ``-E`` is needed.
     """
+    if stop_ready_event is not None:
+        # 初始菜单也可能包含 MENU/统计等关键词，必须在真正停止前清空，
+        # 否则会出现刚发 -q 就立刻误发 -E 的情况。
+        stop_ready_event.clear()
     send_commands(proc, ["-q"], delay=0.2)
     wait_time = max(5, int(os.environ.get("GFAM_GHA_STOP_WAIT_SECONDS", str(first_wait_seconds)) or first_wait_seconds))
     print(f"[GHA] 已发送 -q，最多等待 {wait_time} 秒；检测到统计/菜单后会立即发送 -E。", flush=True)
@@ -558,9 +571,10 @@ def send_default_stop_sequence(
 class OutputFilter:
     """Stream child output while suppressing dashboard refresh blocks."""
 
-    def __init__(self, compact: bool = True, reset_log_every: int = 10) -> None:
+    def __init__(self, compact: bool = True, reset_log_every: int = 10, module_key: str = "") -> None:
         self.compact = compact
         self.reset_log_every = max(1, int(reset_log_every or 10))
+        self.module_key = str(module_key or "").strip().lower()
         self.stop_ready_event = threading.Event()
         self._in_dashboard = False
         self._suppressed_dashboard_blocks = 0
@@ -577,8 +591,12 @@ class OutputFilter:
         self.fatal_event = threading.Event()
 
     def _mark_stop_ready_if_needed(self, stripped: str) -> None:
-        if stripped and any(keyword in stripped for keyword in STOP_READY_KEYWORDS):
-            self.stop_ready_event.set()
+        if stripped:
+            if self.module_key == "a10-resource":
+                if any(keyword in stripped for keyword in A10_STOP_READY_KEYWORDS):
+                    self.stop_ready_event.set()
+            elif any(keyword in stripped for keyword in STOP_READY_KEYWORDS):
+                self.stop_ready_event.set()
         if stripped and any(pattern.search(stripped) for pattern in FATAL_LINE_PATTERNS):
             self.fatal_event.set()
 
@@ -896,7 +914,7 @@ def main(argv: list[str] | None = None) -> int:
         text=True,
         bufsize=1,
     )
-    output_filter = OutputFilter(compact=compact, reset_log_every=reset_log_every)
+    output_filter = OutputFilter(compact=compact, reset_log_every=reset_log_every, module_key=module_key)
     output_thread = stream_output(proc, output_filter)
 
     def finish(exit_code: int | None, forced_failure: bool = False) -> int:
@@ -932,7 +950,12 @@ def main(argv: list[str] | None = None) -> int:
         if explicit_stop:
             send_commands(proc, explicit_stop, delay=2.0)
         else:
-            send_default_stop_sequence(proc, output_filter.stop_ready_event)
+            if module_key == "a10-resource":
+                # A-10 要等模块侧完成 pending 掉落批量拆解、结束 Index 和最终统计后，
+                # 才能发送 -E；否则 GHA 总资源统计可能会抓到半收尾状态。
+                send_default_stop_sequence(proc, output_filter.stop_ready_event, first_wait_seconds=int(os.environ.get("GFAM_GHA_A10_STOP_WAIT_SECONDS", "180") or 180))
+            else:
+                send_default_stop_sequence(proc, output_filter.stop_ready_event)
         if wait_until(proc, 180):
             output_thread.join(timeout=5)
             return finish(proc.returncode or 0)

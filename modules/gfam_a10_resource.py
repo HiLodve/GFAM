@@ -84,6 +84,8 @@ A10_MIN_ROUND_SECONDS = (1.0 / A10_TARGET_RPS) if A10_TARGET_RPS > 0 else 0.0
 A10_STEP_DELAY = max(0.0, float(os.environ.get("GFAM_A10_STEP_DELAY", "0.01") or 0.01))
 A10_ROUND_DELAY = max(0.0, float(os.environ.get("GFAM_A10_ROUND_DELAY", "0.00") or 0.0))
 A10_FAILURE_DELAY = max(0.0, float(os.environ.get("GFAM_A10_FAILURE_DELAY", "0.30") or 0.30))
+A10_TRACE_RESOURCE = str(os.environ.get("GFAM_A10_TRACE_RESOURCE", "0") or "0").strip().lower() in ("1", "true", "yes", "y", "on")
+A10_EXIT_JOIN_SECONDS = max(0.0, float(os.environ.get("GFAM_A10_EXIT_JOIN_SECONDS", "30") or 30))
 
 current_worker_thread = None
 worker_mode = None
@@ -209,6 +211,23 @@ def diff_resources(start: Optional[Dict[str, int]], end: Optional[Dict[str, int]
     start = start or {key: 0 for key in RESOURCE_KEYS}
     end = end or {key: 0 for key in RESOURCE_KEYS}
     return {key: _safe_int(end.get(key), 0) - _safe_int(start.get(key), 0) for key in RESOURCE_KEYS}
+
+
+def trace_resource_snapshot(client: GFLClient, label: str) -> None:
+    """Optional resource tracing for A-10 debugging.
+
+    Disabled by default because it requests Index/index at extra points.
+    Enable with GFAM_A10_TRACE_RESOURCE=1 when verifying exactly which step
+    changes the four basic resources.
+    """
+    if not A10_TRACE_RESOURCE:
+        return
+    payload = request_index(client, "A10 TRACE %s" % label)
+    inv = extract_resources_from_index(payload)
+    if inv is None:
+        print("[A10-TRACE][资源] %s：Index 解析失败。" % label)
+    else:
+        print("[A10-TRACE][资源] %s：%s" % (label, fmt_resources(inv)))
 
 
 def team1_guns_from_index(payload: Optional[dict]) -> List[dict]:
@@ -358,8 +377,10 @@ def run_one_a10_resource(client: GFLClient) -> Optional[dict]:
         "mission_ally_spots": [],
         "ally_id": int(time.time()),
     }
+    trace_resource_snapshot(client, "startMission 前")
     if check_step_error(client.send_request(API_MISSION_START, start_payload), "startMission"):
         return None
+    trace_resource_snapshot(client, "startMission 后")
 
     # 本方案不移动、不 battleFinish。直接结束回合，进入结算。
     # startMission 后的中间回合响应不会携带有效 mission_win_result；
@@ -379,6 +400,7 @@ def run_one_a10_resource(client: GFLClient) -> Optional[dict]:
     win_resp = client.send_request(API_MISSION_START_TURN, {})
     if check_step_error(win_resp, "startTurn"):
         return None
+    trace_resource_snapshot(client, "startTurn 结算后")
 
     guns = parse_win_gun_drops(win_resp)
     return {"guns": guns}
@@ -525,6 +547,7 @@ def a10_resource_worker() -> None:
             retired = retire_guns(client, pending_guns, reason="A-10 人形仓库缓存耗尽，批量拆解")
             RUN_STATS["retired_gun_count"] = int(RUN_STATS.get("retired_gun_count", 0) or 0) + int(retired or 0)
             if retired > 0:
+                trace_resource_snapshot(client, "批量拆解后")
                 if RUN_STATS.get("gun_storage_free") is not None:
                     RUN_STATS["gun_storage_free"] = int(RUN_STATS.get("gun_storage_free") or 0) + int(retired)
                 pending_guns[:] = []
@@ -536,6 +559,7 @@ def a10_resource_worker() -> None:
         retired = retire_guns(client, pending_guns, reason="A-10 运行结束收尾批量拆解")
         RUN_STATS["retired_gun_count"] = int(RUN_STATS.get("retired_gun_count", 0) or 0) + int(retired or 0)
         if retired > 0:
+            trace_resource_snapshot(client, "收尾批量拆解后")
             pending_guns[:] = []
             RUN_STATS["pending_gun_count"] = 0
     print("[*] A-10 四项资源获取正在结束，申请一次 Index/index 统计资源变化……")
@@ -545,6 +569,7 @@ def a10_resource_worker() -> None:
     RUN_STATS["running"] = False
     print_status()
     print_resource_summary()
+    print("[A10-FINAL-STATS-DONE] A-10 收尾完成，可以退出。")
     worker_mode, current_worker_thread = None, None
 
 
@@ -560,6 +585,7 @@ def print_menu() -> None:
     print("说明：运行前会请求一次 Index/index 校验第一梯队是否为单人，并记录四项起始库存。")
     print("说明：运行中不移动、不 battleFinish；结束时再次请求 Index/index 统计四项变化。")
     print("说明：默认尝试 %.2f 轮/秒；步骤 %.2fs / 额外轮间 %.2fs，可用 GFAM_A10_TARGET_RPS 等环境变量覆盖。" % (A10_TARGET_RPS, A10_STEP_DELAY, A10_ROUND_DELAY))
+    print("说明：如需排查资源变化，可临时设置 GFAM_A10_TRACE_RESOURCE=1 进行分段 Index 追踪。")
     print("==========================================================\n")
 
 
@@ -611,6 +637,11 @@ def main() -> int:
                 abort_current_mission(make_client(), "手动")
             elif low in ("-e", "-exit", "-quit") or cmd_prefix == "-E":
                 stop_macro_flag = True
+                if current_worker_thread and current_worker_thread.is_alive():
+                    print("[*] 正在等待 A-10 当前轮/收尾统计完成后返回主菜单……")
+                    current_worker_thread.join(timeout=A10_EXIT_JOIN_SECONDS)
+                    if current_worker_thread.is_alive():
+                        print("[!] A-10 收尾等待超时，将返回主菜单；如需完整统计请优先使用 -q。")
                 shutdown_proxy_if_running()
                 print("[*] 已返回少女全自动 GFAM 主菜单。")
                 return 0
