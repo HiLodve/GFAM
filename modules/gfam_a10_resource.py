@@ -249,7 +249,7 @@ def parse_gun_storage_from_index(payload: Optional[dict]) -> dict:
     if not isinstance(payload, dict):
         return {"used": None, "max": None, "free": None}
     user_info = payload.get("user_info") if isinstance(payload.get("user_info"), dict) else {}
-    max_gun = safe_int(user_info.get("maxgun"), 0)
+    max_gun = _safe_int(user_info.get("maxgun"), 0)
     guns = payload.get("gun_with_user_info")
     used = len(guns) if isinstance(guns, list) else 0
     if max_gun <= 0:

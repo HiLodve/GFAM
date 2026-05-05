@@ -5,3 +5,6 @@
 - A-10 四项资源获取在正式运行前先 abortMission 一次，避免首轮 startMission error:2。
 - A-10 人形掉落改为本地 pending 队列：按 Index 起始仓库空位做本地扣减，缓存空位为 0 时批量拆解；运行结束时做收尾批量拆解。
 - 其它已经具备仓库缓存/应急拆解/收尾拆解的模块不做大范围重构，避免回退已验证稳定逻辑。
+
+
+补充修复：A-10 人形仓库上限读取处统一使用 _safe_int，修复 GHA 中 NameError: safe_int is not defined。
