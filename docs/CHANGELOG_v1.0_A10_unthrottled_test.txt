@@ -1,0 +1,20 @@
+# GFAM v1.0 A-10 极速测试补丁
+
+基准说明：上一版 A-10 strict stop/trace + 2rps 版本资源统计已恢复正常，可作为稳定基准。
+
+本补丁用于继续提速测试：
+
+- 默认 GFAM_A10_TARGET_RPS=0，关闭目标 RPS 节流。
+- 默认 GFAM_A10_STEP_DELAY=0。
+- 默认 GFAM_A10_ROUND_DELAY=0。
+- 默认 GFAM_A10_FAILURE_DELAY=0.20。
+- 保留 A-10 严格停止与 [A10-FINAL-STATS-DONE] 收尾判定。
+- 保留 pending 人形缓存与收尾批量拆解。
+- 保留 GFAM_A10_TRACE_RESOURCE=1 资源追踪能力。
+
+如出现不稳定，可通过环境变量回退稳定速度：
+
+GFAM_A10_TARGET_RPS=2
+GFAM_A10_STEP_DELAY=0.01
+GFAM_A10_ROUND_DELAY=0
+GFAM_A10_FAILURE_DELAY=0.30

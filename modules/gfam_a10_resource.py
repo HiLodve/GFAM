@@ -72,18 +72,20 @@ CONFIG = {
     "MAX_CONSECUTIVE_FAILURES": 8,
 }
 
-# A-10 方案不移动、不进战斗，流程很短；默认尝试约 2 次结算/秒。
-# 说明：这是“尽量靠近 2 RPS”的节流目标；实际速度仍受服务器响应、网络、加解密与拆解请求影响。
-# 如需回退保守速度，可在本地/GHA 环境变量中覆盖：
-#   GFAM_A10_TARGET_RPS=1
-#   GFAM_A10_STEP_DELAY=0.05
-#   GFAM_A10_ROUND_DELAY=0.20
-#   GFAM_A10_FAILURE_DELAY=0.50
-A10_TARGET_RPS = max(0.0, float(os.environ.get("GFAM_A10_TARGET_RPS", "2.0") or 2.0))
+# A-10 方案不移动、不进战斗，流程很短；本版为“极速测试版”。
+# 默认不再主动按 2 RPS 节流，而是尽量压低本地等待，把速度交给服务器响应本身限制。
+# 重要：上一版（GFAM_v1.0_A10_strict_stop_trace + 2rps）已作为稳定基准；
+# 如本版出现 error:2 / plaintext response / 资源统计异常，可用下列环境变量回退：
+#   GFAM_A10_TARGET_RPS=2
+#   GFAM_A10_STEP_DELAY=0.01
+#   GFAM_A10_ROUND_DELAY=0
+#   GFAM_A10_FAILURE_DELAY=0.30
+# 说明：GFAM_A10_TARGET_RPS=0 表示关闭目标 RPS 节流。
+A10_TARGET_RPS = max(0.0, float(os.environ.get("GFAM_A10_TARGET_RPS", "0") or 0.0))
 A10_MIN_ROUND_SECONDS = (1.0 / A10_TARGET_RPS) if A10_TARGET_RPS > 0 else 0.0
-A10_STEP_DELAY = max(0.0, float(os.environ.get("GFAM_A10_STEP_DELAY", "0.01") or 0.01))
-A10_ROUND_DELAY = max(0.0, float(os.environ.get("GFAM_A10_ROUND_DELAY", "0.00") or 0.0))
-A10_FAILURE_DELAY = max(0.0, float(os.environ.get("GFAM_A10_FAILURE_DELAY", "0.30") or 0.30))
+A10_STEP_DELAY = max(0.0, float(os.environ.get("GFAM_A10_STEP_DELAY", "0") or 0.0))
+A10_ROUND_DELAY = max(0.0, float(os.environ.get("GFAM_A10_ROUND_DELAY", "0") or 0.0))
+A10_FAILURE_DELAY = max(0.0, float(os.environ.get("GFAM_A10_FAILURE_DELAY", "0.20") or 0.20))
 A10_TRACE_RESOURCE = str(os.environ.get("GFAM_A10_TRACE_RESOURCE", "0") or "0").strip().lower() in ("1", "true", "yes", "y", "on")
 A10_EXIT_JOIN_SECONDS = max(0.0, float(os.environ.get("GFAM_A10_EXIT_JOIN_SECONDS", "30") or 30))
 
@@ -483,7 +485,10 @@ def a10_resource_worker() -> None:
 
     print("=== A-10 四项资源获取 Started ===")
     print("[*] 本方案只部署第一梯队；第一梯队必须为单人梯队；不移动、不 battleFinish，直接结束回合并结算。")
-    print("[*] A-10 快速间隔：目标 %.2f 轮/秒（最小轮期 %.2fs），步骤 %.2fs / 额外轮间 %.2fs / 失败 %.2fs。" % (A10_TARGET_RPS, A10_MIN_ROUND_SECONDS, A10_STEP_DELAY, A10_ROUND_DELAY, A10_FAILURE_DELAY))
+    if A10_TARGET_RPS > 0:
+        print("[*] A-10 快速间隔：目标 %.2f 轮/秒（最小轮期 %.2fs），步骤 %.2fs / 额外轮间 %.2fs / 失败 %.2fs。" % (A10_TARGET_RPS, A10_MIN_ROUND_SECONDS, A10_STEP_DELAY, A10_ROUND_DELAY, A10_FAILURE_DELAY))
+    else:
+        print("[*] A-10 极速测试：已关闭目标 RPS 节流，步骤 %.2fs / 额外轮间 %.2fs / 失败 %.2fs。" % (A10_STEP_DELAY, A10_ROUND_DELAY, A10_FAILURE_DELAY))
     abort_current_mission(client, "正式运行前状态清理")
     index_payload = request_index(client, "运行前 Index/index")
     if index_payload is None:
@@ -584,7 +589,10 @@ def print_menu() -> None:
     print("----------------------------------------------------------")
     print("说明：运行前会请求一次 Index/index 校验第一梯队是否为单人，并记录四项起始库存。")
     print("说明：运行中不移动、不 battleFinish；结束时再次请求 Index/index 统计四项变化。")
-    print("说明：默认尝试 %.2f 轮/秒；步骤 %.2fs / 额外轮间 %.2fs，可用 GFAM_A10_TARGET_RPS 等环境变量覆盖。" % (A10_TARGET_RPS, A10_STEP_DELAY, A10_ROUND_DELAY))
+    if A10_TARGET_RPS > 0:
+        print("说明：默认尝试 %.2f 轮/秒；步骤 %.2fs / 额外轮间 %.2fs，可用 GFAM_A10_TARGET_RPS 等环境变量覆盖。" % (A10_TARGET_RPS, A10_STEP_DELAY, A10_ROUND_DELAY))
+    else:
+        print("说明：当前为极速测试版，默认关闭目标 RPS 节流；步骤 %.2fs / 额外轮间 %.2fs，可用 GFAM_A10_TARGET_RPS 等环境变量回退。" % (A10_STEP_DELAY, A10_ROUND_DELAY))
     print("说明：如需排查资源变化，可临时设置 GFAM_A10_TRACE_RESOURCE=1 进行分段 Index 追踪。")
     print("==========================================================\n")
 
