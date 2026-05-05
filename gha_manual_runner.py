@@ -69,15 +69,11 @@ RESOURCE_LABELS = {
     "part": "零件",
 }
 
-# These modules already print their own resource summary at run end.  The GHA
-# wrapper only supplements modules that do not have a built-in summary, so we
-# avoid duplicating output.
-MODULES_WITH_BUILTIN_RESOURCE_SUMMARY = {
-    "13-4-train",
-    "13-4-resource",
-    "f2p",
-    "f2p_pr",
-}
+# GHA wrapper prints a lightweight start/end Index resource summary for all
+# modules.  Some modules also print module-side summaries; duplicated resource
+# deltas are acceptable in GHA because compact logging may hide or suppress the
+# module-side ending block.
+MODULES_WITH_BUILTIN_RESOURCE_SUMMARY: set[str] = set()
 
 # Fixed dashboard headers. In local Windows runs these are useful; in GHA they
 # generate very long logs because every refresh becomes permanent text.
@@ -295,13 +291,11 @@ def build_default_start_commands(module_key: str, train_team_count: int) -> List
 def should_collect_resource_summary(module_key: str) -> bool:
     """Return whether the GHA wrapper should add a resource summary.
 
-    13-4/f2p/f2p_pr already have module-side resource statistics, so the
-    wrapper does not print a duplicate summary for them.  Other GHA modules are
-    supplemented by a start/end Index/index comparison.
+    In GHA compact mode, module-side ending statistics can be hidden or delayed
+    by interactive prompts.  To make every run verifiable, the wrapper now
+    prints its own resource delta for all modules by default.
     """
-    if not is_truthy(os.environ.get("GFAM_GHA_RESOURCE_SUMMARY", "1"), default=True):
-        return False
-    return module_key not in MODULES_WITH_BUILTIN_RESOURCE_SUMMARY
+    return is_truthy(os.environ.get("GFAM_GHA_RESOURCE_SUMMARY", "1"), default=True)
 
 
 def normalize_server_for_zirc(server: str | None) -> str:
@@ -403,7 +397,7 @@ def print_resource_summary_if_needed(
     print(f"结束库存：{format_resource_inventory(end_inv)}", flush=True)
     print(f"本次变化：{format_resource_inventory(diff, signed=True)}", flush=True)
     print(f"每小时效率：{format_resource_inventory(per_hour, signed=True)}", flush=True)
-    print("说明：该统计由 GHA runner 在运行前后各请求一次 Index/index 计算；13-4/f2p/f2p_pr 已有模块内统计时不会重复打印。", flush=True)
+    print("说明：该统计由 GHA runner 在运行前后各请求一次 Index/index 计算，用于 GHA 运行结束兜底确认。", flush=True)
     print("===========================================", flush=True)
 
 
@@ -420,6 +414,24 @@ def send_commands(proc: subprocess.Popen, commands: Iterable[str], delay: float 
         except BrokenPipeError:
             return
         time.sleep(delay)
+
+
+def send_default_stop_sequence(proc: subprocess.Popen, first_wait_seconds: int = 75) -> bool:
+    """Safely stop interactive modules without swallowing final statistics.
+
+    Sending ``-q`` and ``-E`` back-to-back can make some modules leave their
+    menu before the worker has printed final statistics.  GHA therefore sends
+    ``-q`` first, waits for the current macro/worker to settle, and only then
+    sends ``-E`` if the process is still alive.  Return True if the process has
+    exited before ``-E`` is needed.
+    """
+    send_commands(proc, ["-q"], delay=0.2)
+    wait_time = max(5, int(os.environ.get("GFAM_GHA_STOP_WAIT_SECONDS", str(first_wait_seconds)) or first_wait_seconds))
+    print(f"[GHA] 已发送 -q，等待 {wait_time} 秒让模块输出结算/统计。", flush=True)
+    if wait_until(proc, wait_time):
+        return True
+    send_commands(proc, ["-E"], delay=0.2)
+    return proc.poll() is not None
 
 
 class OutputFilter:
@@ -692,7 +704,7 @@ def main(argv: list[str] | None = None) -> int:
     if should_collect_resource_summary(module_key):
         resource_start_inv = request_resource_snapshot(uid, sign, args.server, "起始库存")
     else:
-        print("[GHA][资源] 当前模块已有运行结束资源统计，GHA wrapper 不重复打印。", flush=True)
+        print("[GHA][资源] 本次已按配置关闭 GHA 资源统计。", flush=True)
 
     proc = subprocess.Popen(
         cmd,
@@ -735,9 +747,12 @@ def main(argv: list[str] | None = None) -> int:
             output_thread.join(timeout=5)
             return finish(proc.returncode or 0)
 
-        stop_commands = parse_lines(args.stop_commands) or DEFAULT_STOP_COMMANDS
+        explicit_stop = parse_lines(args.stop_commands)
         print("[GHA] 到达运行窗口，发送安全停止命令。", flush=True)
-        send_commands(proc, stop_commands, delay=2.0)
+        if explicit_stop:
+            send_commands(proc, explicit_stop, delay=2.0)
+        else:
+            send_default_stop_sequence(proc)
         if wait_until(proc, 180):
             output_thread.join(timeout=5)
             return finish(proc.returncode or 0)

@@ -48,7 +48,7 @@ on:
         type: string
         default: "1"
       run_minutes:
-        description: "运行多少分钟后发送 -q / -E 安全停止"
+        description: "运行多少分钟后安全停止；默认先 -q 等待统计，再 -E 退出"
         required: true
         type: string
         default: "30"
@@ -63,7 +63,7 @@ on:
         type: string
         default: ""
       stop_commands:
-        description: "自定义停止命令，可留空；默认发送 -q 和 -E"
+        description: "自定义停止命令，可留空；默认先发送 -q，等待统计后再发送 -E"
         required: false
         type: string
         default: ""

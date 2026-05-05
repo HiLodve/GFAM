@@ -130,3 +130,10 @@ GHA runner 会为缺少模块内资源统计的模块补充一次四项基础资
 ```text
 GFAM_GHA_RESOURCE_SUMMARY=0
 ```
+
+
+## v1.0 GHA 停止与统计说明
+
+- `compact_log=true` 时仍会隐藏固定仪表盘和高频循环日志。
+- GHA runner 会在所有模块运行前后各请求一次 `Index/index`，输出四项基础资源变化，用于运行结束兜底确认。
+- 默认停止流程不再连续发送 `-q` 和 `-E`；而是先发送 `-q`，等待模块输出结算/统计后，再发送 `-E` 退出。等待时间可通过环境变量 `GFAM_GHA_STOP_WAIT_SECONDS` 调整，默认 75 秒。
