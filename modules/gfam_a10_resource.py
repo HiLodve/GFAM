@@ -29,7 +29,7 @@ from typing import Dict, List, Optional, Tuple
 from gflzirc import (
     GFLClient, GFLProxy, set_windows_proxy,
     SERVERS, STATIC_KEY, DEFAULT_SIGN,
-    API_MISSION_COMBINFO, API_MISSION_START, API_MISSION_END_TURN,
+    API_MISSION_START, API_MISSION_END_TURN,
     API_MISSION_START_ENEMY_TURN, API_MISSION_END_ENEMY_TURN,
     API_MISSION_START_TURN, API_MISSION_ABORT, API_GUN_RETIRE,
 )
@@ -286,10 +286,11 @@ def run_one_a10_resource(client: GFLClient) -> Optional[dict]:
     """Run one A-10 no-move resource attempt.
 
     Return {'guns': [...]} on success, None on protocol/flow failure.
-    """
-    if check_step_error(client.send_request(API_MISSION_COMBINFO, {"mission_id": MISSION_ID}), "combInfo"):
-        return None
 
+    抓包确认 A-10 单人不移动方案没有 Mission/combInfo 前置请求；
+    成功流程应直接 startMission -> endTurn -> startEnemyTurn ->
+    endEnemyTurn -> startTurn，并在 startTurn 响应中读取 mission_win_result。
+    """
     start_payload = {
         "mission_id": MISSION_ID,
         "spots": [{"spot_id": START_SPOT, "team_id": TEAM_ID}],
@@ -304,6 +305,8 @@ def run_one_a10_resource(client: GFLClient) -> Optional[dict]:
         return None
 
     # 本方案不移动、不 battleFinish。直接结束回合，进入结算。
+    # startMission 后的中间回合响应不会携带有效 mission_win_result；
+    # 最终以 startTurn 响应里的 mission_win_result 作为胜利结算来源。
     if check_step_error(client.send_request(API_MISSION_END_TURN, {}), "endTurn"):
         return None
     time.sleep(0.15)

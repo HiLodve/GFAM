@@ -1,0 +1,7 @@
+# A-10 四项资源获取修复
+
+- 根据实际 A-10 单人不移动抓包修正流程。
+- 移除错误的 Mission/combInfo 前置请求。
+- A-10 流程改为直接：startMission -> endTurn -> startEnemyTurn -> endEnemyTurn -> startTurn。
+- 只在 startTurn 响应中读取 mission_win_result、reward_gun 等结算信息。
+- 不改灰域、smart、f2p、13-4、pick_and_train 等其它模块。
