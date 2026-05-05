@@ -17,6 +17,7 @@ let rl = null;
 const modules = [
   { id: 'epa_plus', aliases: ['epa', 'epa_plus', 'epaplus', '打捞', 'epa打捞'], title: 'epa_plus：EPA 打捞', menuTitle: 'epa_plus（EPA 打捞）', file: 'epa_plus.py', hiddenOnServers: ['EN'] },
   { id: '13-4', aliases: ['134', '13-4', '13_4', '13.4', 'train134', 'resource134', '13-4练级', '13-4资源', '13-4打捞'], title: '13-4：五战练级 / 四项基础资源打捞', menuTitle: '13-4（五战练级 / 四项基础资源打捞）', file: 'gfam_13_4.py', hiddenOnServers: [] },
+  { id: 'a10-resource', aliases: ['a10-resource', 'a10res', 'a10资源', 'a10四项', '普通a10资源', '四项资源a10', '思想资源', '四项资源获取'], title: 'A-10：四项资源获取', menuTitle: 'A-10（单人不移动四项资源获取）', file: 'gfam_a10_resource.py', hiddenOnServers: ['EN'] },
   { id: 'pick', aliases: ['pick', 'train', 'picktrain', 'pick_and_train', '资料', '自动训练'], title: 'pick_and_train：获取训练资料 / 自动训练 / 自动循环', menuTitle: 'pick_and_train（获取训练资料 / 自动训练 / 自动循环）', file: 'pick_and_train.py', hiddenOnServers: [] },
   { id: 'f2p', aliases: ['f2p', '10', '零元购'], title: '零元购 f2p', menuTitle: '零元购 f2p', file: 'f2p.py', hiddenOnServers: [] },
   { id: 'f2p_pr', aliases: ['f2p_pr', 'f2ppr', 'pr', '11', '零元购pr', '零元购_pr'], title: '零元购 PR（额外核心）', menuTitle: '零元购 PR（额外核心）', file: 'f2p_pr.py', hiddenOnServers: [] },

@@ -12,6 +12,7 @@ on:
           - greyzone
           - 13-4-train
           - 13-4-resource
+          - a10-resource
           - f2p
           - f2p_pr
           - smart-gun

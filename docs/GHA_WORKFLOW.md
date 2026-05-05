@@ -39,6 +39,7 @@ Workflow 会通过 `gha_manual_runner.py` 向模块标准输入发送命令。�
 - `f2p` / `f2p_pr` / `smart`：自动发送 `-r`
 - `13-4-train`：自动发送 `-134train`、`-full`、`train_team_count`、`-a`、`-keepmax`、`-y`、`-r`
 - `13-4-resource`：自动发送 `-134`、`-a`、`-keepmax`、`-y`、`-r`
+- `a10-resource`：自动发送 `-r`，模块会先请求 Index/index 校验第一梯队单人，并记录四项资源基准
 - `pick_and_train`：自动发送 `-2`、`-count`、`-run`，先进入自动训练；训练资料不足时由模块内部循环切换到获取资料，达到模块内条件后返回训练
 
 GHA 不再提供独立 `epa` 入口；EPA 参数链较长，GHA 中使用 `smart` 一键打捞替代。若外部仍传入 `epa`，runner 会兼容映射到 `smart`。
@@ -111,10 +112,11 @@ GHA runner 会为缺少模块内资源统计的模块补充一次四项基础资
 
 - `13-4-train`
 - `13-4-resource`
+- `a10-resource`
 - `f2p`
 - `f2p_pr`
 
-其余模块，例如 `greyzone`、`smart`、`pick_and_train`，会在日志末尾显示：
+其余模块，例如 `greyzone`、`a10-resource`、`smart`、`pick_and_train`，会在日志末尾显示：
 
 ```text
 =========== GHA 四项基础资源统计 ===========

@@ -49,6 +49,7 @@ GHA 入口会显示模块菜单。模块启动后仍由该模块接管命令行�
 
 ```bash
 ./run_gha.sh --module greyzone --server SOP
+./run_gha.sh --module a10-resource --server M4A1
 ./run_gha.sh --module 13-4 --server M4A1
 ./run_gha.sh --module pick --server SOP --fairy
 ./run_gha.sh --module f2p --server SOP --fairy
@@ -104,6 +105,7 @@ GFAM_SIGN_KEY
 - `greyzone`：灰域自动彩蛋，保持原有 GHA 默认逻辑。
 - `13-4-train`：13-4 练级模式，`train_team_count` 表示从梯队2开始练几个实际练级梯队。
 - `13-4-resource`：13-4 双单人五战四项资源打捞模式。
+- `a10-resource`：普通 A-10 四项资源获取；第一梯队必须为单人梯队，不移动直接结束回合并结算。
 - `pick_and_train`：统一训练循环。先自动训练，训练资料不足时切换获取资料，达到模块内条件后返回训练。
 - `smart`：一键打捞入口。GHA 不再提供独立 `epa` 入口，EPA 相关流程建议由 smart 替代。
 - `f2p` / `f2p_pr`：零元购相关模块。
@@ -122,7 +124,7 @@ GitHub Actions 页面不适合长期显示本地版那种固定下方仪表盘�
 
 在 GitHub Actions 中运行时，`gha_manual_runner.py` 会为没有模块内资源统计的模块补充运行前后资源对比。该统计通过运行前、运行结束后各请求一次 `Index/index` 获得，不会在运行中反复请求。
 
-`13-4`、`f2p`、`f2p_pr` 已有模块内资源统计，GHA wrapper 不重复打印。`greyzone`、`smart`、`pick_and_train` 等模块会在结束时显示 GHA 四项基础资源统计。
+`13-4`、`f2p`、`f2p_pr` 已有模块内资源统计，GHA wrapper 不重复打印。`greyzone`、`a10-resource`、`smart`、`pick_and_train` 等模块会在结束时显示 GHA 四项基础资源统计。
 
 
 ## v1.0 GHA 停止与统计说明

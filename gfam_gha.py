@@ -28,6 +28,7 @@ SERVERS = ("SOP", "RO635", "M4A1", "M16", "AR-15", "EN")
 MODULES = [
     {"id": "epa", "title": "epa_plus（EPA 打捞）", "file": "epa_plus.py", "aliases": ["1", "epa", "epa_plus", "打捞"], "hidden": ["EN"]},
     {"id": "13-4", "title": "13-4（五战练级 / 四项基础资源打捞）", "file": "gfam_13_4.py", "aliases": ["2", "134", "13-4", "13_4", "资源", "练级"]},
+    {"id": "a10-resource", "title": "A-10（单人不移动四项资源获取）", "file": "gfam_a10_resource.py", "aliases": ["8", "a10", "a10-resource", "a10res", "a10资源", "四项资源a10", "思想资源"], "hidden": ["EN"]},
     {"id": "pick", "title": "pick_and_train（获取训练资料 / 自动训练 / 自动循环）", "file": "pick_and_train.py", "aliases": ["3", "pick", "train", "pick_and_train", "自动训练"]},
     {"id": "f2p", "title": "零元购 f2p", "file": "f2p.py", "aliases": ["4", "f2p", "零元购"]},
     {"id": "f2p_pr", "title": "零元购 PR（额外核心）", "file": "f2p_pr.py", "aliases": ["5", "f2p_pr", "f2ppr", "pr", "零元购pr"]},

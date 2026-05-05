@@ -1,0 +1,17 @@
+# GFAM v1.0 A-10 四项资源获取补丁
+
+新增模块：A-10 四项资源获取。
+
+方案规则：
+- 基于 EPA 普通 A-10，mission_id=144，起始点 97026。
+- 只部署第一梯队。
+- 运行前通过 Index/index 校验第一梯队必须为单人梯队。
+- 进入战役后不移动、不发送 battleFinish。
+- 直接 endTurn -> startEnemyTurn -> endEnemyTurn -> startTurn 结算。
+- 运行前后各请求一次 Index/index，统计四项资源变化与每小时效率。
+- 结算若返回人形掉落，会提交自动拆解；无掉落时空发一次 retire 作为确认。
+- 失败时尝试 abortMission 清理 A-10 战役状态。
+
+GHA：
+- 新增 module 选项：a10-resource。
+- 默认启动命令：-r。

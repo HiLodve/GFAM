@@ -39,6 +39,7 @@ except Exception:  # pragma: no cover - GitHub Actions will surface a warning in
 
 DEFAULT_START_COMMANDS = {
     "greyzone": ["-r"],
+    "a10-resource": ["-r"],
     # f2p/f2p_pr 在收到 -r 后会进入“运行确认”提示；GHA 需要自动补 -y，
     # 否则只会停在确认界面，run_minutes 到点后再退出，看起来像“没有运行”。
     "f2p": ["-r", "-y"],
@@ -64,6 +65,9 @@ GHA_MODULE_TO_GFAM_MODULE = {
     "134-resource": "13-4",
     "13-4": "13-4",
     "134": "13-4",
+    "a10-resource": "a10-resource",
+    "a10-res": "a10-resource",
+    "a10": "a10-resource",
     "pick-and-train": "pick",
     "pick-data": "pick",
     "pick-train": "pick",
@@ -310,6 +314,14 @@ def normalize_gha_module(value: str | None) -> str:
         "res134": "13-4-resource",
         "13-4": "13-4-train",
         "134": "13-4-train",
+        "a10-resource": "a10-resource",
+        "a10-res": "a10-resource",
+        "a10res": "a10-resource",
+        "a10": "a10-resource",
+        "a10四项": "a10-resource",
+        "a10资源": "a10-resource",
+        "思想资源": "a10-resource",
+        "四项资源a10": "a10-resource",
         "pick-and-train": "pick-and-train",
         "pickandtrain": "pick-and-train",
         "pick-data": "pick-and-train",
@@ -768,7 +780,7 @@ def normalize_child_exit_code(exit_code: int | None, output_filter: OutputFilter
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run GFAM module from GitHub Actions with scripted commands.")
-    parser.add_argument("--module", default=os.environ.get("GFAM_GHA_MODULE", "greyzone"), help="GFAM module id, e.g. greyzone / f2p / 13-4-train / 13-4-resource / pick_and_train / smart-gun / smart-equip")
+    parser.add_argument("--module", default=os.environ.get("GFAM_GHA_MODULE", "greyzone"), help="GFAM module id, e.g. greyzone / a10-resource / f2p / 13-4-train / 13-4-resource / pick_and_train / smart-gun / smart-equip")
     parser.add_argument("--server", default=os.environ.get("GFAM_SERVER", "SOP"), help="Server: SOP/RO635/M4A1/M16/AR-15/EN")
     parser.add_argument("--fairy", action="store_true", help="Enable fairy automation for this run")
     parser.add_argument("--no-fairy", action="store_true", help="Disable fairy automation for this run")
@@ -820,6 +832,8 @@ def main(argv: list[str] | None = None) -> int:
     print(f"[GHA] module={module_key} child_module={child_module} server={args.server} fairy={'on' if env.get('GFAM_FAIRY_AUTO_ENABLED') == '1' else 'off'}", flush=True)
     if module_key == "13-4-train":
         print(f"[GHA] 13-4 练级梯队数量={train_team_count}（从梯队2开始）", flush=True)
+    if module_key == "a10-resource":
+        print("[GHA] a10-resource：普通 A-10，第一梯队单人，不移动直接结束回合并结算。", flush=True)
     if module_key == "pick-and-train":
         print("[GHA] pick_and_train：先自动训练；资料不足时切换获取资料，达到模块内条件后返回训练。", flush=True)
     if module_key == "smart-gun":
