@@ -45,13 +45,14 @@ DEFAULT_START_COMMANDS = {
     "f2p_pr": ["-r", "-y"],
     "f2p-pr": ["-r", "-y"],
     # smart 在 GHA 中拆分为人形/装备两种入口。
-    # -r 只会生成计划并进入「输入 -run 确认」阶段，因此必须自动补 -run，再次 -r 才会真正开跑。
+    # -r 只会生成计划并进入「输入 -run 确认」阶段，因此必须自动补 -run。
+    # smart 进入目标执行层后还需要 -go 跳过确认并直接运行当前目标；-go 会直接触发底层一键运行，不再额外发送 -r。
     # GHA 无法在 smart 生成计划后的“目标都已拥有，是否 -all”提示处实时人工确认。
     # 因此默认补发 -all：如果触发“全部目标各打一只”提示，则继续生成兜底计划；
-    # 如果未触发该提示，-all 通常只会作为无效/冗余命令被菜单忽略，随后 -run/-r 继续执行当前计划。
-    "smart": ["-gun", "-r", "-all", "-run", "-r"],
-    "smart-gun": ["-gun", "-r", "-all", "-run", "-r"],
-    "smart-equip": ["-equip", "-r", "-all", "-run", "-r"],
+    # 如果未触发该提示，-all 通常只会作为无效/冗余命令被菜单忽略，随后 -run/-go 继续执行当前计划。
+    "smart": ["-gun", "-r", "-all", "-run", "-go"],
+    "smart-gun": ["-gun", "-r", "-all", "-run", "-go"],
+    "smart-equip": ["-equip", "-r", "-all", "-run", "-go"],
 }
 
 GHA_MODULE_TO_GFAM_MODULE = {
@@ -822,9 +823,9 @@ def main(argv: list[str] | None = None) -> int:
     if module_key == "pick-and-train":
         print("[GHA] pick_and_train：先自动训练；资料不足时切换获取资料，达到模块内条件后返回训练。", flush=True)
     if module_key == "smart-gun":
-        print("[GHA] smart-gun：人形一键打捞，自动发送 -gun / -r / -all / -run / -r。", flush=True)
+        print("[GHA] smart-gun：人形一键打捞，自动发送 -gun / -r / -all / -run / -go。", flush=True)
     if module_key == "smart-equip":
-        print("[GHA] smart-equip：装备一键打捞，自动发送 -equip / -r / -all / -run / -r。", flush=True)
+        print("[GHA] smart-equip：装备一键打捞，自动发送 -equip / -r / -all / -run / -go。", flush=True)
     print(f"[GHA] compact_log={'on' if compact else 'off'}", flush=True)
 
     resource_start_time = time.time()
