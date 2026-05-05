@@ -43,10 +43,13 @@ DEFAULT_START_COMMANDS = {
     # 否则只会停在确认界面，run_minutes 到点后再退出，看起来像“没有运行”。
     "f2p": ["-r", "-y"],
     "f2p_pr": ["-r", "-y"],
+    "f2p-pr": ["-r", "-y"],
     "smart": ["-r"],
 }
 
 GHA_MODULE_TO_GFAM_MODULE = {
+    "f2p-pr": "f2p_pr",
+    "f2p_pr": "f2p_pr",
     "13-4-train": "13-4",
     "13-4-resource": "13-4",
     "134-train": "13-4",
@@ -273,6 +276,11 @@ def clamp_train_team_count(value: str | int | None) -> int:
 def normalize_gha_module(value: str | None) -> str:
     text = str(value or "greyzone").strip().lower().replace("_", "-")
     aliases = {
+        # workflow_dispatch 的 f2p_pr 会先被 replace("_", "-") 变成 f2p-pr；
+        # 这里必须映射回内部模块名 f2p_pr，否则 GHA 不会自动发送 -r/-y。
+        "f2p-pr": "f2p_pr",
+        "f2ppr": "f2p_pr",
+        "f2p-prime": "f2p_pr",
         "13-4-level": "13-4-train",
         "13-4-training": "13-4-train",
         "134train": "13-4-train",
