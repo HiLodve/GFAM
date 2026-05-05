@@ -241,6 +241,35 @@ def validate_team1_single(payload: Optional[dict]) -> bool:
     return True
 
 
+def parse_gun_storage_from_index(payload: Optional[dict]) -> dict:
+    """从 Index/index 中读取人形仓库本地缓存。
+
+    仅用于 A-10 运行中本地估算，不主动全仓库扫描拆解。
+    """
+    if not isinstance(payload, dict):
+        return {"used": None, "max": None, "free": None}
+    user_info = payload.get("user_info") if isinstance(payload.get("user_info"), dict) else {}
+    max_gun = safe_int(user_info.get("maxgun"), 0)
+    guns = payload.get("gun_with_user_info")
+    used = len(guns) if isinstance(guns, list) else 0
+    if max_gun <= 0:
+        return {"used": used or None, "max": None, "free": None}
+    free = max(0, max_gun - used)
+    return {"used": used, "max": max_gun, "free": free}
+
+
+def add_unique_pending_guns(pending: List[int], gun_uids: List[int]) -> None:
+    seen = set(pending)
+    for uid in gun_uids or []:
+        try:
+            uid = int(uid)
+        except Exception:
+            continue
+        if uid > 0 and uid not in seen:
+            seen.add(uid)
+            pending.append(uid)
+
+
 def parse_win_gun_drops(resp: Optional[dict]) -> List[int]:
     if not isinstance(resp, dict):
         return []
@@ -351,6 +380,7 @@ def print_resource_summary() -> None:
     print("本次变化：%s" % fmt_resources(diff, signed=True))
     print("每小时效率：%s" % fmt_resources(per_hour, signed=True))
     print("人形掉落/拆解：%d / %d" % (int(RUN_STATS.get("dropped_gun_count", 0) or 0), int(RUN_STATS.get("retired_gun_count", 0) or 0)))
+    print("结束待拆解缓存：%d" % int(RUN_STATS.get("pending_gun_count", 0) or 0))
     try:
         print_fairy_summary(start_snapshot=None)
     except Exception:
@@ -380,6 +410,8 @@ def print_status() -> None:
     print("起始资源：%s" % fmt_resources(RUN_STATS.get("resource_start")))
     print("当前/结束资源：%s" % fmt_resources(RUN_STATS.get("resource_end")))
     print("最近掉落：%s" % RUN_STATS.get("last_drop", "无"))
+    if RUN_STATS.get("gun_storage_free") is not None:
+        print("人形仓库缓存空位：%s；待批量拆解：%d" % (RUN_STATS.get("gun_storage_free"), int(RUN_STATS.get("pending_gun_count", 0) or 0)))
     fairy_line = fairy_runtime_status_line()
     if fairy_line:
         print(fairy_line)
@@ -400,6 +432,9 @@ def a10_resource_worker() -> None:
         "last_drop": "无",
         "dropped_gun_count": 0,
         "retired_gun_count": 0,
+        "pending_gun_count": 0,
+        "gun_storage_free": None,
+        "gun_storage_max": None,
         "resource_start": None,
         "resource_end": None,
         "resource_cache_source": "-",
@@ -408,6 +443,7 @@ def a10_resource_worker() -> None:
     print("=== A-10 四项资源获取 Started ===")
     print("[*] 本方案只部署第一梯队；第一梯队必须为单人梯队；不移动、不 battleFinish，直接结束回合并结算。")
     print("[*] A-10 快速间隔：步骤 %.2fs / 轮间 %.2fs / 失败 %.2fs。" % (A10_STEP_DELAY, A10_ROUND_DELAY, A10_FAILURE_DELAY))
+    abort_current_mission(client, "正式运行前状态清理")
     index_payload = request_index(client, "运行前 Index/index")
     if index_payload is None:
         print("[!] 运行前 Index/index 失败，已停止。")
@@ -420,8 +456,17 @@ def a10_resource_worker() -> None:
         return
     RUN_STATS["resource_start"] = extract_resources_from_index(index_payload)
     RUN_STATS["resource_end"] = RUN_STATS["resource_start"]
+    storage = parse_gun_storage_from_index(index_payload)
+    RUN_STATS["gun_storage_free"] = storage.get("free")
+    RUN_STATS["gun_storage_max"] = storage.get("max")
     print("[*] 起始四项资源：%s" % fmt_resources(RUN_STATS.get("resource_start")))
+    if storage.get("free") is not None:
+        print("[*] 人形仓库缓存：%s/%s，空位 %s；A-10 将仅在缓存空位耗尽或运行结束时批量拆解。" % (storage.get("used"), storage.get("max"), storage.get("free")))
+    else:
+        print("[*] 人形仓库缓存未能完整解析；A-10 将按保守批量阈值拆解。")
 
+    pending_guns: List[int] = []
+    pending_retire_fallback_limit = max(1, int(os.environ.get("GFAM_A10_PENDING_RETIRE_LIMIT", "30") or "30"))
     consecutive_failures = 0
     while not stop_macro_flag:
         RUN_STATS["macro"] = int(RUN_STATS.get("macro", 0) or 0) + 1
@@ -446,12 +491,34 @@ def a10_resource_worker() -> None:
         guns = list(result.get("guns") or [])
         RUN_STATS["dropped_gun_count"] = int(RUN_STATS.get("dropped_gun_count", 0) or 0) + len(guns)
         RUN_STATS["last_drop"] = "无" if not guns else "UID " + ", ".join(str(x) for x in guns)
-        retired = retire_guns(client, guns, reason="A-10 胜利结算后人形拆解") if guns else retire_guns(client, [], reason="A-10 空掉落拆解确认")
-        RUN_STATS["retired_gun_count"] = int(RUN_STATS.get("retired_gun_count", 0) or 0) + int(retired or 0)
-        print("[A-10] 第 %d 轮完成；本轮掉落：%s" % (macro, RUN_STATS["last_drop"]))
+        add_unique_pending_guns(pending_guns, guns)
+        RUN_STATS["pending_gun_count"] = len(pending_guns)
+        if guns and RUN_STATS.get("gun_storage_free") is not None:
+            RUN_STATS["gun_storage_free"] = max(0, int(RUN_STATS.get("gun_storage_free") or 0) - len(guns))
+        should_retire_now = False
+        if pending_guns:
+            if RUN_STATS.get("gun_storage_free") is not None:
+                should_retire_now = int(RUN_STATS.get("gun_storage_free") or 0) <= 0
+            else:
+                should_retire_now = len(pending_guns) >= pending_retire_fallback_limit
+        if should_retire_now:
+            retired = retire_guns(client, pending_guns, reason="A-10 人形仓库缓存耗尽，批量拆解")
+            RUN_STATS["retired_gun_count"] = int(RUN_STATS.get("retired_gun_count", 0) or 0) + int(retired or 0)
+            if retired > 0:
+                if RUN_STATS.get("gun_storage_free") is not None:
+                    RUN_STATS["gun_storage_free"] = int(RUN_STATS.get("gun_storage_free") or 0) + int(retired)
+                pending_guns[:] = []
+                RUN_STATS["pending_gun_count"] = 0
+        print("[A-10] 第 %d 轮完成；本轮掉落：%s；待批量拆解 %d" % (macro, RUN_STATS["last_drop"], len(pending_guns)))
         if A10_ROUND_DELAY:
             time.sleep(A10_ROUND_DELAY)
 
+    if pending_guns:
+        retired = retire_guns(client, pending_guns, reason="A-10 运行结束收尾批量拆解")
+        RUN_STATS["retired_gun_count"] = int(RUN_STATS.get("retired_gun_count", 0) or 0) + int(retired or 0)
+        if retired > 0:
+            pending_guns[:] = []
+            RUN_STATS["pending_gun_count"] = 0
     print("[*] A-10 四项资源获取正在结束，申请一次 Index/index 统计资源变化……")
     end_payload = request_index(client, "结束 Index/index")
     if end_payload is not None:

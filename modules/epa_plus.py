@@ -4078,6 +4078,24 @@ def gfam_last_error_is_auth() -> bool:
     return gfam_is_auth_or_plaintext_error(LAST_GFL_ERROR.get("resp"))
 
 
+def gfam_pre_run_abort_once(client, reason="正式运行前状态清理"):
+    """运行前轻量 abortMission 一次，清理上次异常残留的同关卡状态。
+
+    只发送 abortMission，不额外请求 Index/index；异常静默降级，避免影响正常开跑。
+    """
+    if not CONFIG.get("ENABLE_PRE_RUN_ABORT", True):
+        return False
+    mission_id = CONFIG.get("MISSION_ID")
+    if not mission_id:
+        return False
+    try:
+        print("[状态清理] %s：尝试 abortMission mission_id=%s。" % (reason, mission_id))
+        client.send_request(API_MISSION_ABORT, {"mission_id": int(mission_id)})
+        return True
+    except Exception:
+        return False
+
+
 def gfam_last_error_is_start_state_conflict() -> bool:
     """startMission 返回 error:2 通常表示服务器仍认为上一轮战役状态未完全结束。"""
     if not LAST_GFL_ERROR:
@@ -4912,6 +4930,7 @@ def _farm_worker_impl():
         return
 
     client = GFLClient(CONFIG["USER_UID"], CONFIG["SIGN_KEY"], CONFIG["BASE_URL"])
+    gfam_pre_run_abort_once(client, reason="运行前状态清理")
     if not gfam_refresh_dynamic_micro_limit_before_run(client):
         if gfam_is_night_equip_farm_mode():
             print("[装备仓库] 当前可安全执行的 Micro 上限仍为 0，已取消运行。装备应急拆解未能释放足够装备仓库空位，请先手动整理装备仓库后再试。")

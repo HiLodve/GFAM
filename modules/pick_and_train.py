@@ -2698,6 +2698,21 @@ def farm_worker():
         except Exception:
             pass
 
+def gfam_pre_run_abort_once(client, reason="正式运行前状态清理"):
+    """运行前轻量 abortMission 一次，清理上次异常残留的获取资料关卡状态。"""
+    if not CONFIG.get("ENABLE_PRE_RUN_ABORT", True):
+        return False
+    mission_id = CONFIG.get("MISSION_ID")
+    if not mission_id:
+        return False
+    try:
+        pick_log("[状态清理] %s：尝试 abortMission mission_id=%s。" % (reason, mission_id))
+        client.send_request(API_MISSION_ABORT, {"mission_id": int(mission_id)})
+        return True
+    except Exception:
+        return False
+
+
 def _farm_worker_impl():
     global stop_macro_flag, stop_micro_flag, worker_mode, current_worker_thread, CURRENT_MENU, TRAIN_INDEX_CACHE, TRAIN_COUNT_READY
 
@@ -2707,6 +2722,7 @@ def _farm_worker_impl():
         return
 
     client = GFLClient(CONFIG["USER_UID"], CONFIG["SIGN_KEY"], CONFIG["BASE_URL"])
+    gfam_pre_run_abort_once(client, reason="运行前状态清理")
 
     if not CONFIG.get("PICK_TEAM_VALIDATED", False):
         print("[获取资料] 梯队尚未完成校验，请从获取资料菜单重新输入 -r。")

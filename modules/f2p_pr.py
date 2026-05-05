@@ -1060,6 +1060,18 @@ def farm_worker():
         except Exception:
             pass
 
+def gfam_pre_run_abort_once(client, reason="正式运行前状态清理"):
+    """运行前轻量 abortMission 一次，清理上次异常残留的零元购状态。"""
+    if not CONFIG.get("ENABLE_PRE_RUN_ABORT", True):
+        return False
+    try:
+        f2p_log("[状态清理] %s：尝试 abortMission mission_id=10801。" % reason)
+        client.send_request(API_MISSION_ABORT, {"mission_id": 10801})
+        return True
+    except Exception:
+        return False
+
+
 def _farm_worker_impl():
     global stop_macro_flag, stop_micro_flag, worker_mode, current_worker_thread
     
@@ -1069,6 +1081,7 @@ def _farm_worker_impl():
         return
 
     client = GFLClient(CONFIG["USER_UID"], CONFIG["SIGN_KEY"], CONFIG["BASE_URL"])
+    gfam_pre_run_abort_once(client, reason="运行前状态清理")
 
     index_payload = CONFIG.pop("RUN_INDEX_CACHE", None)
     if isinstance(index_payload, dict):

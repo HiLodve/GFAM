@@ -31,11 +31,12 @@ if ZIRC_CORE.exists() and str(ZIRC_CORE) not in sys.path:
     sys.path.insert(0, str(ZIRC_CORE))
 
 try:
-    from gflzirc import GFLClient, SERVERS, API_INDEX_INDEX
+    from gflzirc import GFLClient, SERVERS, API_INDEX_INDEX, API_MISSION_ABORT
 except Exception:  # pragma: no cover - GitHub Actions will surface a warning instead of failing import-time
     GFLClient = None  # type: ignore[assignment]
     SERVERS = {}  # type: ignore[assignment]
     API_INDEX_INDEX = "Index/index"
+    API_MISSION_ABORT = "Mission/abortMission"
 
 DEFAULT_START_COMMANDS = {
     "greyzone": ["-r"],
@@ -95,6 +96,19 @@ RESOURCE_LABELS = {
 # deltas are acceptable in GHA because compact logging may hide or suppress the
 # module-side ending block.
 MODULES_WITH_BUILTIN_RESOURCE_SUMMARY: set[str] = set()
+
+# GHA 运行前轻量 abortMission：用于清理上一次异常残留的同关卡状态。
+# 已在模块内部处理的灰域/A-10 不在这里重复执行；smart 的具体 mission_id
+# 需要计划生成后才知道，因此由模块侧 pre-run abort 处理。
+PRE_ABORT_MISSION_IDS = {
+    "f2p": [11880],
+    "f2p_pr": [10801],
+    "f2p-pr": [10801],
+    "13-4-train": [128],
+    "13-4-resource": [128],
+    "pick-and-train": [10352],
+}
+
 
 # Fixed dashboard headers. In local Windows runs these are useful; in GHA they
 # generate very long logs because every refresh becomes permanent text.
@@ -372,6 +386,28 @@ def should_collect_resource_summary(module_key: str) -> bool:
     prints its own resource delta for all modules by default.
     """
     return is_truthy(os.environ.get("GFAM_GHA_RESOURCE_SUMMARY", "1"), default=True)
+
+
+def gha_pre_run_abort_once(module_key: str, uid: str, sign: str, server: str) -> None:
+    """GHA wrapper 层运行前 abortMission 一次，减少残留战役导致的首轮 error:2。"""
+    if not is_truthy(os.environ.get("GFAM_GHA_PRE_RUN_ABORT", "1"), default=True):
+        return
+    ids = PRE_ABORT_MISSION_IDS.get(module_key) or []
+    if not ids or GFLClient is None or not SERVERS:
+        return
+    base_url = SERVERS.get(normalize_server_for_zirc(server))
+    if not base_url:
+        return
+    try:
+        client = GFLClient(uid, sign, base_url)
+        for mid in ids:
+            try:
+                print(f"[GHA][状态清理] 运行前 abortMission mission_id={mid}。", flush=True)
+                client.send_request(API_MISSION_ABORT, {"mission_id": int(mid)}, max_retries=1, timeout=15)
+            except Exception:
+                pass
+    except Exception:
+        pass
 
 
 def normalize_server_for_zirc(server: str | None) -> str:
@@ -841,6 +877,7 @@ def main(argv: list[str] | None = None) -> int:
     if module_key == "smart-equip":
         print("[GHA] smart-equip：装备一键打捞，自动发送 -equip / -r / -all / -run / -go。", flush=True)
     print(f"[GHA] compact_log={'on' if compact else 'off'}", flush=True)
+    gha_pre_run_abort_once(module_key, uid, sign, args.server)
 
     resource_start_time = time.time()
     resource_start_inv: Optional[Dict[str, int]] = None
