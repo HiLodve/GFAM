@@ -35,8 +35,12 @@ Workflow 会通过 `gha_manual_runner.py` 向模块标准输入发送命令。
 
 默认启动命令：
 
-- `greyzone` / `13-4` / `f2p` / `f2p_pr` / `smart`：自动发送 `-r`
-- `pick` / `epa`：默认不自动发送启动命令，建议在 `start_commands` 中写入需要的菜单命令
+- `greyzone` / `f2p` / `f2p_pr` / `smart`：自动发送 `-r`
+- `13-4-train`：自动发送 `-134train`、`-full`、`train_team_count`、`-a`、`-keepmax`、`-y`、`-r`
+- `13-4-resource`：自动发送 `-134`、`-a`、`-keepmax`、`-y`、`-r`
+- `pick-data` / `pick`：自动发送 `-1`、`-r`，进入获取训练资料菜单并开始运行
+- `pick-train`：自动发送 `-2`、`-count`、`-run`，进入自动训练菜单、统计并确认开始训练
+- `epa`：默认不自动发送启动命令，建议在 `start_commands` 中写入需要的菜单命令
 
 灰域可通过 `ticket_type` 自动发送：
 
@@ -73,4 +77,27 @@ Workflow 会通过 `gha_manual_runner.py` 向模块标准输入发送命令。
 
 ## 精简日志说明
 
-开启 `compact_log` 时，GHA 日志会隐藏固定仪表盘、逐步移动日志、`当前地图未发现有效彩蛋，继续重置。`、Macro/Micro 常规循环记录等重复行。日志中仅保留关键事件、错误/停止信息、低频运行心跳和最终统计；同一条关键日志如果被仪表盘最近日志区反复重放，会在短时间内自动去重。
+开启 `compact_log` 时，GHA 日志会隐藏固定仪表盘、逐步移动日志、`当前地图未发现有效彩蛋，继续重置。`、Macro/Micro 常规循环记录等重复行。日志中仅保留关键事件、错误/停止信息、低频运行心跳和最终统计。
+
+
+## 13-4 模块说明
+
+GHA 页面已将 13-4 拆成两个独立选项：
+
+- `13-4-train`：13-4 五战练级。Runner 会自动发送 `-134train`、默认 `-full`、练级梯队数量、`-a`、`-keepmax`、`-y`、`-r`。
+- `13-4-resource`：13-4 双单人五战四项基础资源打捞。Runner 会自动发送 `-134`、`-a`、`-keepmax`、`-y`、`-r`。
+
+`train_team_count` 只对 `13-4-train` 生效，表示从梯队2开始实际参与练级的梯队数量。例如填 `3`，会要求解析并轮转梯队2、梯队3、梯队4；梯队1仍固定为单人占位队。
+
+灰域 `greyzone` 的默认启动逻辑保持不变。
+
+
+## pick 模块说明
+
+GHA 页面已将 pick_and_train 的常用流程拆成：
+
+- `pick-data`：获取训练资料。Runner 默认发送 `-1`、`-r`。
+- `pick-train`：自动训练。Runner 默认发送 `-2`、`-count`、`-run`。
+- `pick`：兼容旧选项，等同于 `pick-data`。
+
+如果需要其它自定义流程，可以在 `start_commands` 中手动覆盖默认命令。

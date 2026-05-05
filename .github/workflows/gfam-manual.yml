@@ -10,10 +10,13 @@ on:
         default: greyzone
         options:
           - greyzone
-          - 13-4
+          - 13-4-train
+          - 13-4-resource
           - f2p
           - f2p_pr
           - smart
+          - pick-data
+          - pick-train
           - pick
           - epa
       server:
@@ -42,6 +45,11 @@ on:
           - default
           - ticket1
           - ticket2
+      train_team_count:
+        description: "13-4 练级梯队数量；从梯队2开始计算，例如 3=练第2/3/4队"
+        required: true
+        type: string
+        default: "1"
       run_minutes:
         description: "运行多少分钟后发送 -q / -E 安全停止"
         required: true
@@ -53,7 +61,7 @@ on:
         type: string
         default: ""
       start_commands:
-        description: "自定义启动命令，可留空；留空时对 greyzone/f2p/13-4/smart 默认发送 -r"
+        description: "自定义启动命令，可留空；13-4 与 pick-data/pick-train 会自动补全默认启动命令"
         required: false
         type: string
         default: ""
@@ -129,6 +137,7 @@ jobs:
             --server "${{ inputs.server }}" \
             ${{ inputs.fairy && '--fairy' || '--no-fairy' }} \
             --ticket-type "${{ inputs.ticket_type }}" \
+            --train-team-count "${{ inputs.train_team_count }}" \
             --run-minutes "${{ inputs.run_minutes }}" \
             --startup-commands "${{ inputs.startup_commands }}" \
             --start-commands "${{ inputs.start_commands }}" \

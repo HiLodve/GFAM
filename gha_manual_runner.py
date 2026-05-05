@@ -30,11 +30,25 @@ DEFAULT_START_COMMANDS = {
     "greyzone": ["-r"],
     "f2p": ["-r"],
     "f2p_pr": ["-r"],
-    "13-4": ["-r"],
-    "134": ["-r"],
     "smart": ["-r"],
-    "pick": [],
+    # pick-data is the safe default: enter the 获取训练资料 menu and start.
+    # pick-train is handled by build_default_start_commands because it needs
+    # a -count -> confirm -run sequence.
+    "pick": ["-1", "-r"],
+    "pick-data": ["-1", "-r"],
     "epa": [],
+}
+
+GHA_MODULE_TO_GFAM_MODULE = {
+    "13-4-train": "13-4",
+    "13-4-resource": "13-4",
+    "134-train": "13-4",
+    "134-resource": "13-4",
+    "13-4": "13-4",
+    "134": "13-4",
+    "pick-data": "pick",
+    "pick-train": "pick",
+    "pick": "pick",
 }
 
 DEFAULT_STOP_COMMANDS = ["-q", "-E"]
@@ -132,6 +146,62 @@ def parse_lines(text: str | None) -> List[str]:
     return lines
 
 
+def clamp_train_team_count(value: str | int | None) -> int:
+    try:
+        count = int(str(value or "1").strip())
+    except Exception:
+        count = 1
+    # 13-4 练级固定梯队1为单人占位，实际从梯队2开始；最多可到梯队14。
+    return max(1, min(13, count))
+
+
+def normalize_gha_module(value: str | None) -> str:
+    text = str(value or "greyzone").strip().lower().replace("_", "-")
+    aliases = {
+        "13-4-level": "13-4-train",
+        "13-4-training": "13-4-train",
+        "134train": "13-4-train",
+        "134-train": "13-4-train",
+        "train134": "13-4-train",
+        "13-4-train": "13-4-train",
+        "13-4resource": "13-4-resource",
+        "13-4-resource": "13-4-resource",
+        "134-resource": "13-4-resource",
+        "resource134": "13-4-resource",
+        "res134": "13-4-resource",
+        "13-4": "13-4-train",
+        "134": "13-4-train",
+        "pick-resource": "pick-data",
+        "pick-coin": "pick-data",
+        "pick-data": "pick-data",
+        "pick": "pick-data",
+        "picktrain": "pick-train",
+        "pick-train": "pick-train",
+        "train": "pick-train",
+        "auto-train": "pick-train",
+    }
+    return aliases.get(text, text)
+
+
+def child_module_id(module_key: str) -> str:
+    return GHA_MODULE_TO_GFAM_MODULE.get(module_key, module_key)
+
+
+def build_default_start_commands(module_key: str, train_team_count: int) -> List[str]:
+    if module_key == "13-4-train":
+        # 13-4 GHA 自动流程：选择练级模式 -> 默认整队练满 -> 输入练级梯队数量 ->
+        # 请求一次 Index/index 解析梯队 -> 默认不满级停机 -> 确认 -> 开跑。
+        return ["-134train", "-full", str(train_team_count), "-a", "-keepmax", "-y", "-r"]
+    if module_key == "13-4-resource":
+        # 13-4 四项资源模式：选择资源模式 -> 请求一次 Index/index -> 默认不满级停机 -> 确认 -> 开跑。
+        return ["-134", "-a", "-keepmax", "-y", "-r"]
+    if module_key == "pick-train":
+        # 自动训练模式：进入训练菜单 -> 拉一次 Index/index 统计可训练对象 -> 确认开始训练。
+        # -run 会进入确认子菜单后被读取；stdin 会保留排队命令。
+        return ["-2", "-count", "-run"]
+    return list(DEFAULT_START_COMMANDS.get(module_key, []))
+
+
 def send_commands(proc: subprocess.Popen, commands: Iterable[str], delay: float = 0.6) -> None:
     if not proc.stdin:
         return
@@ -167,15 +237,7 @@ class OutputFilter:
         self._last_duplicate_heartbeat = 0.0
 
     def _should_emit_deduped(self, stripped: str) -> bool:
-        """Suppress identical key lines that are reprinted by dashboard refreshes.
-
-        Many GFAM modules keep a recent-log buffer above the fixed dashboard.
-        In a local terminal a screen refresh replaces the old view, but in
-        GitHub Actions every refresh is appended forever. Even after hiding the
-        dashboard block, the recent-log buffer may replay the same important
-        lines such as "彩蛋任务完成" or "自动拆解成功" multiple times. Keep the
-        first occurrence and suppress exact duplicates for a short window.
-        """
+        """Suppress identical key lines replayed by fixed-dashboard recent logs."""
         if not stripped or stripped.startswith("[GHA]"):
             return True
 
@@ -184,7 +246,6 @@ class OutputFilter:
         last = self._recent_lines.get(stripped)
         self._recent_lines[stripped] = now
 
-        # Prevent unbounded growth during very long runs.
         if len(self._recent_lines) > 1200:
             cutoff = now - window
             self._recent_lines = {k: v for k, v in self._recent_lines.items() if v >= cutoff}
@@ -344,17 +405,22 @@ def terminate_process(proc: subprocess.Popen) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run GFAM module from GitHub Actions with scripted commands.")
-    parser.add_argument("--module", default=os.environ.get("GFAM_GHA_MODULE", "greyzone"), help="GFAM module id, e.g. greyzone / f2p / 13-4")
+    parser.add_argument("--module", default=os.environ.get("GFAM_GHA_MODULE", "greyzone"), help="GFAM module id, e.g. greyzone / f2p / 13-4-train / 13-4-resource / pick-data / pick-train")
     parser.add_argument("--server", default=os.environ.get("GFAM_SERVER", "SOP"), help="Server: SOP/RO635/M4A1/M16/AR-15/EN")
     parser.add_argument("--fairy", action="store_true", help="Enable fairy automation for this run")
     parser.add_argument("--no-fairy", action="store_true", help="Disable fairy automation for this run")
     parser.add_argument("--ticket-type", choices=["default", "ticket1", "ticket2"], default="default", help="Greyzone ticket command to send before start")
+    parser.add_argument("--train-team-count", default=os.environ.get("GFAM_GHA_13_4_TRAIN_TEAM_COUNT", "1"), help="13-4 training team count, starting from team 2")
     parser.add_argument("--run-minutes", type=int, default=30, help="Minutes to let the module run before safe-stop commands")
     parser.add_argument("--startup-commands", default="", help="Commands sent before the default start command, separated by newlines")
     parser.add_argument("--start-commands", default="", help="Commands used to start the module. If empty, defaults are used for known modules")
     parser.add_argument("--stop-commands", default="", help="Commands sent at the end. If empty: -q then -E")
     parser.add_argument("--compact-log", choices=["default", "on", "off"], default="default", help="Suppress fixed dashboards and noisy step logs in GitHub Actions")
     args = parser.parse_args(argv)
+
+    module_key = normalize_gha_module(args.module)
+    child_module = child_module_id(module_key)
+    train_team_count = clamp_train_team_count(args.train_team_count)
 
     if not RUN_GHA.exists():
         print("[GHA] 找不到 run_gha.sh。", file=sys.stderr)
@@ -374,7 +440,7 @@ def main(argv: list[str] | None = None) -> int:
         print("[GHA] 缺少 GFAM_USER_UID / GFAM_SIGN_KEY。请在仓库 Settings -> Secrets and variables -> Actions 中配置。", file=sys.stderr)
         return 1
 
-    cmd = [str(RUN_GHA), "--module", args.module, "--server", args.server]
+    cmd = [str(RUN_GHA), "--module", child_module, "--server", args.server]
     if args.fairy:
         cmd.append("--fairy")
     if args.no_fairy:
@@ -388,7 +454,13 @@ def main(argv: list[str] | None = None) -> int:
     reset_log_every = int(os.environ.get("GFAM_GHA_RESET_LOG_EVERY", "10") or "10")
 
     print("[GHA] 启动 GFAM 模块。", flush=True)
-    print(f"[GHA] module={args.module} server={args.server} fairy={'on' if env.get('GFAM_FAIRY_AUTO_ENABLED') == '1' else 'off'}", flush=True)
+    print(f"[GHA] module={module_key} child_module={child_module} server={args.server} fairy={'on' if env.get('GFAM_FAIRY_AUTO_ENABLED') == '1' else 'off'}", flush=True)
+    if module_key == "13-4-train":
+        print(f"[GHA] 13-4 练级梯队数量={train_team_count}（从梯队2开始）", flush=True)
+    if module_key == "pick-data":
+        print("[GHA] pick 模式=获取训练资料，默认发送 -1 / -r。", flush=True)
+    if module_key == "pick-train":
+        print("[GHA] pick 模式=自动训练，默认发送 -2 / -count / -run。", flush=True)
     print(f"[GHA] compact_log={'on' if compact else 'off'}", flush=True)
     proc = subprocess.Popen(
         cmd,
@@ -417,7 +489,7 @@ def main(argv: list[str] | None = None) -> int:
         if explicit_start:
             commands.extend(explicit_start)
         else:
-            commands.extend(DEFAULT_START_COMMANDS.get(args.module.lower(), []))
+            commands.extend(build_default_start_commands(module_key, train_team_count))
 
         send_commands(proc, commands)
 
