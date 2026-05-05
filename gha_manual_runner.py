@@ -39,8 +39,10 @@ except Exception:  # pragma: no cover - GitHub Actions will surface a warning in
 
 DEFAULT_START_COMMANDS = {
     "greyzone": ["-r"],
-    "f2p": ["-r"],
-    "f2p_pr": ["-r"],
+    # f2p/f2p_pr 在收到 -r 后会进入“运行确认”提示；GHA 需要自动补 -y，
+    # 否则只会停在确认界面，run_minutes 到点后再退出，看起来像“没有运行”。
+    "f2p": ["-r", "-y"],
+    "f2p_pr": ["-r", "-y"],
     "smart": ["-r"],
 }
 
