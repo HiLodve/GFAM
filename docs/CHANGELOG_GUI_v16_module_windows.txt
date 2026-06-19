@@ -1,0 +1,8 @@
+GFAM GUI v16 - 模块独立窗口
+
+- 以 GFAM_gui_click_launcher_build_pack_v15_clean_mascot_icon_ui 为基准。
+- 保留 v19 A-10 pending80 拆解修复、分级启动、后台 CMD 隐藏、dist 防误运行机制。
+- 功能模块按钮改为打开对应模块窗口：点击模块入口后，主界面隐藏，弹出对应模块的交互窗口。
+- 模块窗口保留独立日志区、命令输入框、发送回车、返回主界面、停止进程和打开目录。
+- factory 模块窗口保留制造常用快捷命令：-show、-doll、-equip、-testdoll、-testequip、-sighton、-sightoff 等。
+- 关闭模块窗口时返回 GFAM 主界面；使用“返回主界面”会向后台模块发送 -E。

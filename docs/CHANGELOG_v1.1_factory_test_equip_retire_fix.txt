@@ -1,0 +1,7 @@
+GFAM v1.1 factory test equip retire fix
+
+- -testequip 在发送装备制造前会检查装备仓库空位。
+- 当装备仓库空位 <= GFAM_FACTORY_RESERVED_EQUIP_SLOTS（默认 1）时，先尝试应急拆解未上锁、未装备、可确认 4 星及以下的低星装备。
+- 拆解后若空位仍未超过保留线，则停止本次测试/制造，避免把最后保留空位占满。
+- -testequip 快速完成领取后会自动保护五星装备和星级未知装备，并尝试拆解本次测试产出的 1-4 星装备。
+- 相关操作优先根据服务器返回结果本地更新共享 Index 缓存，减少额外 Index/index 请求。

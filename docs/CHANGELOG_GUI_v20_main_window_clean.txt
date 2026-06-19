@@ -1,0 +1,8 @@
+GFAM GUI v20 main window clean
+
+- 基于 GFAM_gui_click_launcher_build_pack_v19_module_entry_queue_fix。
+- 主界面移除“启动与服务器”区域：启动与服务器流程已由分级启动小窗口负责。
+- 主界面移除“制造菜单快捷命令”区域：factory 快捷命令已由 factory 独立模块窗口负责。
+- 主界面保留功能模块入口、日志区、手动命令输入区。
+- 底部保留停止进程按钮，便于紧急停止后台 GFAM 进程。
+- 保留 v19 A-10 pending80 拆解修复、后台 CMD 隐藏、dist 防误运行机制。

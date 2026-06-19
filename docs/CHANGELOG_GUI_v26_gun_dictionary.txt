@@ -1,0 +1,16 @@
+GFAM GUI v26 - factory 人形词典 / 保护 ID 查询
+
+基准：GFAM_gui_click_launcher_build_pack_v25_factory_quick_build_count
+保留：v19 A-10 pending80 拆解修复、v21 日志实时刷新、v23 模块状态同步、v24 返回按钮修复、v25 factory 快速建造次数输入。
+
+新增：
+1. factory 模块窗口新增“人形词典 / 查保护ID”按钮。
+2. 点击后弹出独立人形词典窗口。
+3. 支持按 ID、英文名、代号、常用别名进行模糊搜索。
+4. 支持按星级、枪种筛选。
+5. 双击结果或点击“复制选中 ID”可复制保护 ID。
+6. 点击“填入命令框”可把选中 ID 填入当前模块命令输入框，方便手动添加保护目标。
+
+说明：
+- 数据来自 data/gun.json 与 data/gun1.json，会按人形 ID 合并。
+- 已内置 Px4风暴、索米等常用中文别名辅助搜索。

@@ -1,0 +1,7 @@
+GFAM v1.1 - factory shared Index cache reuse
+
+- UID/SIGN capture still does not actively request Index/index, but if the game login flow itself returns Index/index through the proxy, GFAM now stores it as .gfam_index_cache.json.
+- factory -testdoll / -testequip now first reuse the shared Index cache for resource/contract/build-slot inspection.
+- If the shared cache is missing, stale, or belongs to another server, factory tests fall back to one Index/index request and write the result back to the shared cache.
+- After submitting or finishing a manufacturing request, the shared Index cache is invalidated because old slot/resource data is no longer reliable.
+- Factory background initialization also checks shared cache freshness before falling back to Index/index.

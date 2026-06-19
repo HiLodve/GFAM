@@ -1,0 +1,16 @@
+GFAM v1.1 装备自动制造初版测试
+
+新增：
+- 接入装备自动制造后台服务。
+- 支持 Equip/developMulti 批量提交装备制造。
+- 支持 Equip/finishAllDevelop 普通领取装备制造完成，默认不使用快速制造。
+- 支持 Equip/retire 批量拆解非保护装备。
+- 装备制造提交成功后根据返回的 equip_id + slot 更新本地制造栏缓存。
+- 装备领取后根据 equip_with_user_add_list 中的 equip_with_user.id / equip_id 判断保护或拆解。
+- 装备自动制造和人形自动制造一样跟随其它模块后台运行。
+- 装备仓库至少保留 1 个空位给其它模块，可通过 GFAM_FACTORY_RESERVED_EQUIP_SLOTS 调整。
+
+说明：
+- 当前包未内置 equip.json/equip1.json 时，装备名称会显示为 equip-id，制造完成时间使用 GFAM_FACTORY_EQUIP_FALLBACK_DURATION，默认 1800 秒。
+- 若后续加入装备数据表，程序会优先根据 equip_id 查询制造时间与装备名称。
+- 装备应急拆解较保守：只有能确认低星、未上锁、未装备、非保护的装备才会被全仓库应急拆解；pending 非保护制造产物仍会正常拆解。

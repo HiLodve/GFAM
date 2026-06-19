@@ -1,0 +1,69 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Node/cache
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# PyInstaller build output
+dist/
+build/
+*.exe
+
+# Logs
+logs/
+
+# GFAM runtime caches and debug outputs
+cache/*.json
+cache/*.tmp
+cache/*.log
+!cache/.gitkeep
+index_debug.json
+*debug*.json
+*_Index_index_*.json
+000*_*.json
+*.log
+
+# GFAM runtime state, summaries, signals, PID files
+.gfam_*_summary.json
+.gfam_*_cache.json
+.gfam_*.pid
+.gfam_*.signal
+.gfam_factory_state.json
+.gfam_factory_auto_cache.json
+.gfam_factory_auto.pid
+.gfam_factory_warehouse_cache.json
+.gfam_index_cache.json
+.gfam_quick_build_gui.json
+.gfam_quick_build_summary.json
+.gfam_epa_settings.json
+.gfam_auth.json
+.gfam_auth_capture.pid
+.gfam_auto_stop.signal
+gfam_auth_*.json
+session*.json
+*_session.json
+*_auth.json
+
+# Local archives and backups
+*.zip
+*.7z
+*.rar
+*.bak
+*.bak_*
+*.old
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# GHA local configuration
+.env
+.env.*
+!.env.example

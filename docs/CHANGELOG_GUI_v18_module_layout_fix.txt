@@ -1,0 +1,7 @@
+GFAM GUI v18 - module window command bar layout fix
+
+- Based on GFAM_gui_click_launcher_build_pack_v17_module_entry_buttons.
+- Keeps the v15 clean mascot/icon UI baseline.
+- Keeps v19 A-10 pending80 retire fix.
+- Module windows now place the manual command input bar above the log area, so it will not be squeezed below the visible window.
+- Module window default/minimum size adjusted to leave stable space for shortcut buttons, command input, and logs.

@@ -1,0 +1,7 @@
+GFAM v1.1 A-10 pending 80 retire fix
+
+- A-10 资源模式不再等人形仓库耗尽或运行结束才拆解。
+- 默认每累计 80 个待拆人形 UID 即提交一次分批拆解，避免 pending 累积到 350+ 后服务器响应过慢。
+- 拆解触发条件变为：待拆数量达到 GFAM_A10_PENDING_RETIRE_LIMIT，或本地仓库缓存空位耗尽。
+- 可通过环境变量 GFAM_A10_PENDING_RETIRE_LIMIT 调整触发阈值，默认 80。
+- 拆解每批数量仍由 GFAM_A10_RETIRE_BATCH_SIZE 控制，默认 80。

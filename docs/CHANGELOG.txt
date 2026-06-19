@@ -1,0 +1,42 @@
+# GFAM CHANGELOG
+
+## v1.1
+
+GFAM v1.1 在 v1.0 的基础上加入 A-10 单人不移动四项资源获取方案，并完善 GitHub Actions 运行支持。
+
+### 新增
+
+- 新增 A-10 四项资源获取模块。
+  - 基于 EPA 普通 A-10。
+  - 只部署第一梯队，且要求第一梯队为单人梯队。
+  - 不移动、不 battleFinish，直接结束回合并结算。
+  - 运行前和运行结束各请求一次 Index/index，用于队伍校验与四项资源统计。
+  - 运行中使用本地仓库空位缓存与 pending 掉落队列，仓库缓存不足或运行结束时批量拆解。
+- GitHub Actions 新增 `a10-resource` 模块选项。
+- GHA 中拆分 `13-4-train`、`13-4-resource`、`smart-gun`、`smart-equip`。
+- GHA 中合并 `pick_and_train`，按自动训练与资料获取循环运行。
+
+### 优化与修复
+
+- 修复 A-10 初版错误请求 `combInfo` 的问题。
+- 修复 A-10 运行结束时资源统计异常的问题。
+- 增加 A-10 严格停止逻辑，确保 pending 掉落批量拆解、结束 Index 和最终统计完成后再退出。
+- 为多个模块补充运行前 `abortMission` 清理残留战役状态。
+- 优化 GHA 精简日志，减少重复仪表盘、高频循环和妖精状态刷新。
+- GHA 增加四项资源统计输出。
+- 修复 smart 一键打捞 `-go` 默认满级停机问题，默认按 keepmax 运行。
+
+### A-10 速度说明
+
+- 本地版测试可接近 2 结算/秒。
+- GHA 受 GitHub runner 网络与接口响应影响，通常约 1 结算/秒。
+- 若出现 `error:2`、`Unexpected plaintext response` 或资源统计异常，建议回退稳定参数：
+  - `GFAM_A10_TARGET_RPS=2`
+  - `GFAM_A10_STEP_DELAY=0.01`
+  - `GFAM_A10_ROUND_DELAY=0`
+  - `GFAM_A10_FAILURE_DELAY=0.30`
+
+## v1.0
+
+- 首次正式公开发布。
+- 包含 EPA、13-4、pick_and_train、f2p、f2p_pr、smart 一键打捞、灰域自动彩蛋与妖精自动建造/强化。

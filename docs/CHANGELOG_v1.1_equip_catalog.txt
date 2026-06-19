@@ -1,0 +1,7 @@
+# v1.1 装备制造数据表接入测试
+
+- 新增 data/equip.json。
+- 装备自动制造后台会优先从 data/equip.json / data/equip1.json / equipment.json 读取装备目录。
+- Equip/developMulti 返回 equip_id + slot 后，使用 equip.json 中的 develop_duration 计算领取时间，不再依赖默认 1800 秒兜底。
+- 装备保护 ID 输入确认时使用 equip.json 的 code 字段显示装备类型名称。
+- 装备仓库应急拆解时可根据 equip.json 的 rank 判断星级；默认只拆未上锁、未装备、非保护且 4 星及以下装备。

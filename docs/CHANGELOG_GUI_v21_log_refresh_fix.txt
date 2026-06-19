@@ -1,0 +1,6 @@
+GFAM GUI v21 - 日志实时刷新修复
+
+- GUI 启动后台 GFAM 时强制设置 PYTHONUNBUFFERED=1，避免 Python 模块输出被管道缓冲。
+- run_windows.bat 调用功能模块时使用 python -u，保证 A-10、EPA、factory 等模块 print 后尽快进入 GUI 日志区。
+- GUI 日志队列刷新周期从 80ms 调整为 30ms。
+- 保留 v20 主界面精简、v19 模块入口排队、v19 A-10 pending80 拆解修复、v15 干净 mascot/icon UI。

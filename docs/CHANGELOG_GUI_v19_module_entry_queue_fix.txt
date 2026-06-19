@@ -1,0 +1,9 @@
+GFAM GUI v19 module entry queue fix
+
+- Based on GFAM_gui_click_launcher_build_pack_v15_clean_mascot_icon_ui and later module-window changes.
+- Keeps v19 A-10 pending80 retire fix.
+- Module windows now send the corresponding GFAM main-menu entry command automatically.
+- Module shortcut buttons are temporarily disabled while entering a module.
+- Commands clicked during module entry are queued and sent after the module is ready or after a conservative timeout.
+- Switching from one module window to another sends -E first and waits before entering the new module.
+- Fixes shortcuts such as A-10 -r / 13-4 -a being sent too early or in the wrong menu context.

@@ -1,0 +1,6 @@
+GFAM v1.1 factory local warehouse cache
+
+- 装备制造测试与自动制造的仓库空位判断改为优先使用本地仓库缓存。
+- 首次 Index/index 或复用共享 Index 时写入 .gfam_factory_warehouse_cache.json。
+- 领取、拆解、制造等动作成功后按服务器返回结果本地增减仓库数量，不再为了仓库空位反复刷新 Index/index。
+- 装备制造测试日志中明确显示“装备仓库本地缓存”。

@@ -1,0 +1,7 @@
+# CHANGELOG - factory index time fix
+
+- 人形/装备制造栏位现在参考 Index/index 中的完成标记、finish_time/end_time、remain_time/remaining_time 等字段判断是否已完成。
+- 若 Index 没有返回真实剩余时间，才回退到 start_time + 图鉴制造时长估算。
+- -testdoll / -testequip 会区分“已完成待领取”“建造中”“空闲”，并打印剩余时间来源。
+- 没有空闲栏位但也没有已完成待领取栏位时，不再盲目提示普通领取，而是提示等待或快速制造。
+- 自动制造后台同样使用该逻辑判断可领取栏位，避免把仍在建造中的栏位误当作可释放栏位。

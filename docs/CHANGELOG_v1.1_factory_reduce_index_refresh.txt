@@ -1,0 +1,6 @@
+GFAM v1.1 factory reduce index refresh
+
+- factory -testdoll / -testequip: after ordinary finishAllDevelop claiming completed slots, no longer immediately requests Index/index again.
+- The test flow now derives freed build slots from finishAllDevelop response and updates the shared Index cache locally.
+- If the response lacks enough slot information to update safely, the test stops instead of blindly issuing another Index request.
+- This reduces Index/index usage during factory testing while preserving a conservative fallback behavior.

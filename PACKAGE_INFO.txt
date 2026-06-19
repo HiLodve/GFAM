@@ -1,0 +1,37 @@
+GFAM GUI Click Launcher Build Pack v12 Poster Design
+Base: GFAM_portable_user_bundle_v19_a10_pending80_retire
+UI: poster-style purple/white anime GFAM staged launcher
+Icon: high-resolution regenerated chibi GFAM mascot icon, multi-size ICO
+Important retained fix: A-10 pending retire limit 80, batch retire 80, delay 0.25s
+
+GUI v16: module windows based on v15 clean mascot UI.
+
+GUI v18 note:
+- Module window command input and bottom action buttons moved above the log area to prevent being squeezed out of view.
+
+GUI v19: module entry command queue/switch fix.
+
+
+GUI v20 main window clean:
+- 主界面移除启动与服务器区、factory 快捷区。
+- 这些功能改由分级启动窗口和对应模块独立窗口承载。
+- 保留 v19 A-10 pending80 拆解修复。
+
+GUI build base: v21_log_refresh_fix
+Log refresh: PYTHONUNBUFFERED=1 + python -u + 30ms GUI drain.
+
+GUI v24: removed unsafe generic -back shortcut buttons from module windows and added guard to prevent state desync.
+
+GUI build pack v27: factory 快速建造独立选择公式与保护规则，不套用跟随模块制造设置。
+
+
+[GUI v29] factory 设置弹窗支持直接编辑与保存跟随模块制造配置；自动快速建造仍保持独立本次配置。
+
+
+[GUI v30] EPA 模块快捷按钮收敛为一个“EPA 设置”按钮，具体选项移入弹窗；后端 EPA 命令保持不变。
+
+[GUI v31] EPA 设置加入关卡/目标选择；EPA 批量发送日志改为单行摘要；新增默认开启的精简日志显示。
+
+[GUI v32] 修复 EPA 设置弹窗“关卡并一键运行”在模式提示阶段误发送关卡命令的问题；一键流程会按当前 EPA 提示阶段自动补齐：模式 -> -a -> 关卡 -> 目标 -> -go。EPA 后端新增运行前关卡/目标完整性保护，未完成选择时禁止从默认 mission 常量启动，避免仪表盘显示 “- - -> -”。GUI 精简日志会剥离 ANSI 清屏/颜色控制码。
+
+[GUI v33] GUI 日志加入 Tk Text 彩色标签渲染：保留后端 ANSI SGR 颜色并映射为 GUI 前景色；清屏/光标控制码仍被过滤；保存日志保持纯文本。主窗口与模块窗口新增“彩色日志”开关，默认开启。

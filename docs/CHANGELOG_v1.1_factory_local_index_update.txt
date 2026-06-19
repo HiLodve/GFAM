@@ -1,0 +1,7 @@
+GFAM v1.1 factory local Index cache update
+
+- 工厂测试功能不再在提交制造请求或快速完成后直接清除共享 Index 缓存。
+- 成功发送 Gun/developMultiGun / Equip/developMulti 后，根据服务器返回的栏位、结果 ID、本次公式资源与制造契约消耗，本地更新 .gfam_index_cache.json。
+- 成功发送 Gun/finishAllDevelop / Equip/finishAllDevelop 后，根据返回的新增人形/装备与 build_slot，本地释放制造栏位并扣减快速制造契约。
+- 如果服务器返回缺少必要栏位信息，会保守保留旧缓存并提示，避免错误推导。
+- 普通领取已完成制造仍沿用本地释放栏位逻辑，不额外请求 Index/index。

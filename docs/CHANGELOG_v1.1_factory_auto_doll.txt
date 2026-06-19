@@ -1,0 +1,14 @@
+GFAM v1.1 制造自动化初版
+
+- 新增制造自动化设置模块 modules/gfam_factory_config.py。
+- 新增制造自动化后台 modules/gfam_factory_auto.py。
+- 已实装人形自动制造后台：Gun/developMultiGun、Gun/finishAllDevelop、Gun/retireGun。
+- 人形公式支持手枪/冲锋枪/步枪/突击步枪/机枪。
+- 手枪公式默认推荐保护 Px4风暴 gun_id=233。
+- 冲锋枪公式默认推荐保护 索米 gun_id=115。
+- 选择公式后可选择：默认保护该公式所有五星制造产物，或手动输入保护人形 ID 并根据 gun.json/gun1.json 显示名称确认。
+- 后台服务跟随其它功能模块运行，类似妖精自动建造。
+- 人形制造默认不使用快速制造。
+- 领取完成后非保护产物加入 pending 拆解队列，并调用成熟的 Gun/retireGun 批量拆解方式处理。
+- 仓库满时先拆 pending / 应急拆解未上锁未编队非保护人形；拆后仍满则停止人形制造后台，避免死循环。
+- 装备自动制造已预留公式菜单，但实际接口等待装备制造/领取/拆解抓包后再接入。
